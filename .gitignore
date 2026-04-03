@@ -1,0 +1,15 @@
+.env
+[Bb]in/
+[Oo]bj/
+
+.idea/
+.vs/
+.vscode/
+
+.DS_Store
+
+.nuget/
+cloud/
+
+/Dockerfile
+/docker-compose.yml
