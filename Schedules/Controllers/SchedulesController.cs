@@ -1,6 +1,6 @@
 using FisaActivitateZilnicaApi.Schedules.Controllers.Interfaces;
-using FisaActivitateZilnicaApi.Schedules.DTOs.Responses;
 using FisaActivitateZilnicaApi.Schedules.DTOs.Requests;
+using FisaActivitateZilnicaApi.Schedules.DTOs.Responses;
 using FisaActivitateZilnicaApi.Schedules.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,22 +11,34 @@ public class SchedulesController(
     ISchedulesQueryService schedulesQueryService
 ) : SchedulesApiController
 {
-    public override async Task<ActionResult<string>> UploadSchedule(UploadScheduleRequest request)
+    public override async Task<ActionResult<UploadScheduleResponse>> UploadSchedule(
+        [FromForm] UploadScheduleRequest request,
+        CancellationToken ct = default
+    )
     {
-        if (request.File == null || request.File.Length == 0)
-            return BadRequest("No file or empty file uploaded.");
+        if (request.OddWeekFile == null || request.OddWeekFile.Length == 0)
+            return BadRequest("Odd week file is required.");
 
-        var ext = Path.GetExtension(request.File.FileName);
-        if (!string.Equals(ext, ".fet", StringComparison.OrdinalIgnoreCase))
-            return BadRequest("File must be a .fet file.");
+        if (request.EvenWeekFile == null || request.EvenWeekFile.Length == 0)
+            return BadRequest("Even week file is required.");
 
-        await using var stream = request.File.OpenReadStream();
+        if (!HasFetExtension(request.OddWeekFile))
+            return BadRequest("Odd week file must be a .fet file.");
+
+        if (!HasFetExtension(request.EvenWeekFile))
+            return BadRequest("Even week file must be a .fet file.");
+
+        await using var oddWeekStream = request.OddWeekFile.OpenReadStream();
+        await using var evenWeekStream = request.EvenWeekFile.OpenReadStream();
         var result = await fetImportService.ImportAsync(
-            stream,
+            oddWeekStream,
+            evenWeekStream,
             request.Name,
             request.Year,
             request.Semester,
-            request.OddWeek
+            request.StartDate,
+            request.EndDate,
+            ct
         );
 
         if (!result.Success)
@@ -34,10 +46,20 @@ public class SchedulesController(
                 ? Conflict(result.ErrorMessage)
                 : BadRequest(result.ErrorMessage ?? "Import failed.");
 
-        return StatusCode(201, result.ScheduleId);
+        return StatusCode(
+            201,
+            new UploadScheduleResponse(
+                result.ScheduleYearId!.Value,
+                result.ScheduleSemesterId!.Value,
+                result.OddWeekScheduleId!.Value,
+                result.EvenWeekScheduleId!.Value
+            )
+        );
     }
 
-    public override async Task<ActionResult<IReadOnlyList<TeacherScheduleSlotResponse>>> GetTeacherDaySlots(
+    public override async Task<
+        ActionResult<IReadOnlyList<TeacherScheduleSlotResponse>>
+    > GetTeacherDaySlots(
         [FromQuery] GetTeacherScheduleSlotsRequest request,
         CancellationToken ct = default
     )
@@ -51,5 +73,35 @@ public class SchedulesController(
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    public override async Task<
+        ActionResult<IReadOnlyList<ScheduleResponse>>
+    > GetSchedulesByExternalTeacherId(int externalTeacherId, CancellationToken ct = default)
+    {
+        try
+        {
+            var schedules = await schedulesQueryService.GetSchedulesByExternalTeacherIdAsync(
+                externalTeacherId,
+                ct
+            );
+
+            if (!schedules.Any())
+                return NotFound(
+                    $"No schedules found for external teacher id '{externalTeacherId}'."
+                );
+
+            return Ok(schedules);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    private static bool HasFetExtension(IFormFile file)
+    {
+        var ext = Path.GetExtension(file.FileName);
+        return string.Equals(ext, ".fet", StringComparison.OrdinalIgnoreCase);
     }
 }

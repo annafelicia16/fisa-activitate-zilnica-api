@@ -1,3 +1,4 @@
+using FisaActivitateZilnicaApi.DailyActivities.Models;
 using FisaActivitateZilnicaApi.Schedules.Models;
 using Microsoft.EntityFrameworkCore;
 using SubjectModel = FisaActivitateZilnicaApi.Schedules.Models.Subject;
@@ -6,6 +7,8 @@ namespace FisaActivitateZilnicaApi.Data.Master;
 
 public class MasterDbContext(DbContextOptions<MasterDbContext> options) : DbContext(options)
 {
+    public DbSet<ScheduleYear> ScheduleYears => Set<ScheduleYear>();
+    public DbSet<ScheduleSemester> ScheduleSemesters => Set<ScheduleSemester>();
     public DbSet<Schedule> Schedules => Set<Schedule>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
     public DbSet<SubjectModel> Subjects => Set<SubjectModel>();
@@ -21,9 +24,22 @@ public class MasterDbContext(DbContextOptions<MasterDbContext> options) : DbCont
     public DbSet<Group> Groups => Set<Group>();
     public DbSet<Subgroup> Subgroups => Set<Subgroup>();
     public DbSet<ActivitySlot> ActivitySlots => Set<ActivitySlot>();
+    public DbSet<DailyActivityRecord> DailyActivityRecords => Set<DailyActivityRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder
+            .Entity<ScheduleSemester>()
+            .HasOne(scheduleSemester => scheduleSemester.ScheduleYear)
+            .WithMany(scheduleYear => scheduleYear.ScheduleSemesters)
+            .HasForeignKey(scheduleSemester => scheduleSemester.ScheduleYearId);
+
+        modelBuilder
+            .Entity<Schedule>()
+            .HasOne(schedule => schedule.ScheduleSemester)
+            .WithMany(scheduleSemester => scheduleSemester.Schedules)
+            .HasForeignKey(schedule => schedule.ScheduleSemesterId);
+
         modelBuilder.Entity<ActivityTeacher>().HasKey(at => new { at.ActivityId, at.TeacherId });
 
         modelBuilder

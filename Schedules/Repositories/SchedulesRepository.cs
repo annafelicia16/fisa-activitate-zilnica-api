@@ -9,6 +9,41 @@ namespace FisaActivitateZilnicaApi.Schedules.Repositories;
 
 public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
 {
+    public Task<ScheduleYear?> GetScheduleYearByValueAsync(
+        int value,
+        CancellationToken ct = default
+    ) => db.ScheduleYears.FirstOrDefaultAsync(scheduleYear => scheduleYear.Value == value, ct);
+
+    public async Task AddScheduleYearAsync(
+        ScheduleYear scheduleYear,
+        CancellationToken ct = default
+    )
+    {
+        db.ScheduleYears.Add(scheduleYear);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public Task<ScheduleSemester?> GetScheduleSemesterByYearAndNumberAsync(
+        int scheduleYearId,
+        int semesterNumber,
+        CancellationToken ct = default
+    ) =>
+        db.ScheduleSemesters.FirstOrDefaultAsync(
+            scheduleSemester =>
+                scheduleSemester.ScheduleYearId == scheduleYearId
+                && scheduleSemester.Number == semesterNumber,
+            ct
+        );
+
+    public async Task AddScheduleSemesterAsync(
+        ScheduleSemester scheduleSemester,
+        CancellationToken ct = default
+    )
+    {
+        db.ScheduleSemesters.Add(scheduleSemester);
+        await db.SaveChangesAsync(ct);
+    }
+
     public Task<bool> AnyScheduleAsync(
         Expression<Func<Schedule, bool>> predicate,
         CancellationToken ct = default
@@ -161,5 +196,24 @@ public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
         ).ToListAsync(ct);
 
         return results;
+    }
+
+    public async Task<IReadOnlyList<Schedule>> GetSchedulesByExternalTeacherIdAsync(
+        int externalTeacherId,
+        CancellationToken ct = default
+    )
+    {
+        return await db
+            .Schedules.AsNoTracking()
+            .Include(schedule => schedule.ScheduleSemester)
+            .ThenInclude(scheduleSemester => scheduleSemester.ScheduleYear)
+            .Where(schedule =>
+                schedule.Teachers.Any(teacher => teacher.ExternalTeacherId == externalTeacherId)
+            )
+            .OrderByDescending(schedule => schedule.ScheduleSemester.ScheduleYear.Value)
+            .ThenByDescending(schedule => schedule.ScheduleSemester.Number)
+            .ThenByDescending(schedule => schedule.OddWeek)
+            .ThenBy(schedule => schedule.Name)
+            .ToListAsync(ct);
     }
 }

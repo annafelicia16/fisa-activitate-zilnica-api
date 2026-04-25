@@ -6,6 +6,17 @@ namespace FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
 
 public interface ISchedulesRepository
 {
+    Task<ScheduleYear?> GetScheduleYearByValueAsync(int value, CancellationToken ct = default);
+    Task AddScheduleYearAsync(ScheduleYear scheduleYear, CancellationToken ct = default);
+    Task<ScheduleSemester?> GetScheduleSemesterByYearAndNumberAsync(
+        int scheduleYearId,
+        int semesterNumber,
+        CancellationToken ct = default
+    );
+    Task AddScheduleSemesterAsync(
+        ScheduleSemester scheduleSemester,
+        CancellationToken ct = default
+    );
     Task<bool> AnyScheduleAsync(
         Expression<Func<Schedule, bool>> predicate,
         CancellationToken ct = default
@@ -39,6 +50,10 @@ public interface ISchedulesRepository
         string dayName,
         int externalTeacherId,
         int externalSubjectId,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<Schedule>> GetSchedulesByExternalTeacherIdAsync(
+        int externalTeacherId,
         CancellationToken ct = default
     );
 }

@@ -9,15 +9,33 @@ namespace FisaActivitateZilnicaApi.Schedules.Controllers.Interfaces;
 public abstract class SchedulesApiController : ControllerBase
 {
     [HttpPost("upload")]
-    [ProducesResponseType(statusCode: 201, type: typeof(string))]
+    [ProducesResponseType(statusCode: 201, type: typeof(UploadScheduleResponse))]
     [ProducesResponseType(statusCode: 400, type: typeof(string))]
-    public abstract Task<ActionResult<string>> UploadSchedule(UploadScheduleRequest request);
+    [ProducesResponseType(statusCode: 409, type: typeof(string))]
+    public abstract Task<ActionResult<UploadScheduleResponse>> UploadSchedule(
+        [FromForm] UploadScheduleRequest request,
+        CancellationToken ct = default
+    );
 
     [HttpGet("slots")]
-    [ProducesResponseType(statusCode: 200, type: typeof(IReadOnlyList<TeacherScheduleSlotResponse>))]
+    [ProducesResponseType(
+        statusCode: 200,
+        type: typeof(IReadOnlyList<TeacherScheduleSlotResponse>)
+    )]
     [ProducesResponseType(statusCode: 400, type: typeof(string))]
-    public abstract Task<ActionResult<IReadOnlyList<TeacherScheduleSlotResponse>>> GetTeacherDaySlots(
+    public abstract Task<
+        ActionResult<IReadOnlyList<TeacherScheduleSlotResponse>>
+    > GetTeacherDaySlots(
         [FromQuery] GetTeacherScheduleSlotsRequest request,
+        CancellationToken ct = default
+    );
+
+    [HttpGet("by-external-teacher/{externalTeacherId}")]
+    [ProducesResponseType(statusCode: 200, type: typeof(IReadOnlyList<ScheduleResponse>))]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    [ProducesResponseType(statusCode: 404, type: typeof(string))]
+    public abstract Task<ActionResult<IReadOnlyList<ScheduleResponse>>> GetSchedulesByExternalTeacherId(
+        [FromRoute] int externalTeacherId,
         CancellationToken ct = default
     );
 }

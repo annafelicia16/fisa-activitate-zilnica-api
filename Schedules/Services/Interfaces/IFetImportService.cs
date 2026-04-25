@@ -5,11 +5,13 @@ namespace FisaActivitateZilnicaApi.Schedules.Services.Interfaces;
 public interface IFetImportService
 {
     Task<FetImportResult> ImportAsync(
-        Stream fetStream,
+        Stream oddWeekFetStream,
+        Stream evenWeekFetStream,
         string name,
         int year,
         int semester,
-        bool oddWeek,
+        DateTime startDate,
+        DateTime endDate,
         CancellationToken ct = default
     );
 }

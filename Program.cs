@@ -2,22 +2,27 @@ using System;
 using System.IO;
 using System.Text.Json.Serialization;
 using DotNetEnv;
+using FisaActivitateZilnicaApi.DailyActivities.Repositories;
+using FisaActivitateZilnicaApi.DailyActivities.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.DailyActivities.Services;
+using FisaActivitateZilnicaApi.DailyActivities.Services.Interfaces;
 using FisaActivitateZilnicaApi.Data.Master;
 using FisaActivitateZilnicaApi.Data.University;
+using FisaActivitateZilnicaApi.ExternalTeachers.Repositories;
+using FisaActivitateZilnicaApi.ExternalTeachers.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.ExternalTeachers.Services;
+using FisaActivitateZilnicaApi.ExternalTeachers.Services.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.Repositories;
 using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.Services;
 using FisaActivitateZilnicaApi.Schedules.Services.Interfaces;
 using FisaActivitateZilnicaApi.System;
 using FluentMigrator.Runner;
-using FluentMigrator.Runner.Initialization;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using QuestPDF.Infrastructure;
 using Scalar.AspNetCore;
+
+QuestPDF.Settings.License = LicenseType.Community;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -38,7 +43,6 @@ else
 string[] requiredEnvVars =
 [
     "UNIVERSITY_DB_HOST",
-    "UNIVERSITY_DB_PORT",
     "UNIVERSITY_DB_DATABASE",
     "UNIVERSITY_DB_USERNAME",
     "UNIVERSITY_DB_PASSWORD",
@@ -97,6 +101,8 @@ builder.Services.AddAutoMapper(typeof(MappingProfile));
 #region Repositories
 
 builder.Services.AddScoped<ISchedulesRepository, SchedulesRepository>();
+builder.Services.AddScoped<IDailyActivityRecordsRepository, DailyActivityRecordsRepository>();
+builder.Services.AddScoped<IExternalTeachersRepository, ExternalTeachersRepository>();
 
 #endregion
 
@@ -104,6 +110,12 @@ builder.Services.AddScoped<ISchedulesRepository, SchedulesRepository>();
 
 builder.Services.AddScoped<IFetImportService, FetImportService>();
 builder.Services.AddScoped<ISchedulesQueryService, SchedulesQueryService>();
+builder.Services.AddScoped<IDailyActivityRecordsQueryService, DailyActivityRecordsQueryService>();
+builder.Services.AddScoped<IExternalTeachersQueryService, ExternalTeachersQueryService>();
+builder.Services.AddScoped<
+    IDailyActivityRecordsCommandService,
+    DailyActivityRecordsCommandService
+>();
 
 #endregion
 
@@ -170,7 +182,8 @@ string universityConnectionString =
     + "Encrypt=True;"
     + "TrustServerCertificate=True;"
     + "Pooling=False;"
-    + "MultipleActiveResultSets=False;";
+    + "MultipleActiveResultSets=False;"
+    + "Command Timeout=0";
 
 builder.Services.AddDbContext<UniversityDbContext>(options =>
     options.UseSqlServer(universityConnectionString)

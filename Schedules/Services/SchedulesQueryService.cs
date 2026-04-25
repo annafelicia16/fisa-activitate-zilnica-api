@@ -42,6 +42,34 @@ public class SchedulesQueryService(ISchedulesRepository schedulesRepository) : I
             .ToList();
     }
 
+    public async Task<IReadOnlyList<ScheduleResponse>> GetSchedulesByExternalTeacherIdAsync(
+        int externalTeacherId,
+        CancellationToken ct = default
+    )
+    {
+        if (externalTeacherId <= 0)
+            throw new ArgumentException(
+                "Query parameter 'externalTeacherId' must be greater than 0."
+            );
+
+        var schedules = await schedulesRepository.GetSchedulesByExternalTeacherIdAsync(
+            externalTeacherId,
+            ct
+        );
+
+        return schedules
+            .Select(schedule => new ScheduleResponse(
+                schedule.Id,
+                schedule.Name,
+                schedule.ScheduleSemester.ScheduleYear.Value,
+                schedule.ScheduleSemester.Number,
+                schedule.ScheduleSemester.StartDate,
+                schedule.ScheduleSemester.EndDate,
+                schedule.OddWeek
+            ))
+            .ToList();
+    }
+
     private static void ValidateRequest(GetTeacherScheduleSlotsRequest request)
     {
         if (request.ScheduleId <= 0)

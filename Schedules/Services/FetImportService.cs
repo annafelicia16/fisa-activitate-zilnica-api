@@ -10,179 +10,307 @@ namespace FisaActivitateZilnicaApi.Schedules.Services;
 public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportService
 {
     public async Task<FetImportResult> ImportAsync(
-        Stream fetStream,
+        Stream oddWeekFetStream,
+        Stream evenWeekFetStream,
         string name,
         int year,
         int semester,
-        bool oddWeek,
+        DateTime startDate,
+        DateTime endDate,
         CancellationToken ct = default
     )
     {
-        var exists = await schedulesRepo.AnyScheduleAsync(
-            s => s.Year == year && s.Semester == semester && s.OddWeek == oddWeek,
-            ct
-        );
-        if (exists)
-            return new FetImportResult(
-                false,
-                null,
-                "A schedule already exists for this year, semester, and week type."
+        if (string.IsNullOrWhiteSpace(name))
+            return Failure("Schedule name is required.");
+
+        if (year <= 0)
+            return Failure("Year must be greater than 0.");
+
+        if (semester <= 0)
+            return Failure("Semester must be greater than 0.");
+
+        if (startDate.Date > endDate.Date)
+            return Failure("'startDate' cannot be greater than 'endDate'.");
+
+        ScheduleYear scheduleYear = await GetOrCreateScheduleYearAsync(year, ct);
+        ScheduleSemester? existingScheduleSemester =
+            await schedulesRepo.GetScheduleSemesterByYearAndNumberAsync(
+                scheduleYear.Id,
+                semester,
+                ct
             );
 
-        var data = FetXmlParser.Parse(fetStream);
-
-        var schedule = new Schedule
+        ScheduleSemester scheduleSemester;
+        if (existingScheduleSemester == null)
         {
-            Name = name,
-            Year = year,
-            Semester = semester,
+            scheduleSemester = new ScheduleSemester
+            {
+                ScheduleYearId = scheduleYear.Id,
+                Number = semester,
+                StartDate = startDate.Date,
+                EndDate = endDate.Date,
+            };
+            await schedulesRepo.AddScheduleSemesterAsync(scheduleSemester, ct);
+        }
+        else
+        {
+            scheduleSemester = existingScheduleSemester;
+
+            if (
+                scheduleSemester.StartDate.Date != startDate.Date
+                || scheduleSemester.EndDate.Date != endDate.Date
+            )
+            {
+                return new FetImportResult(
+                    false,
+                    scheduleYear.Id,
+                    scheduleSemester.Id,
+                    null,
+                    null,
+                    "A schedule semester already exists with different start or end dates."
+                );
+            }
+        }
+
+        if (
+            await schedulesRepo.AnyScheduleAsync(
+                schedule => schedule.ScheduleSemesterId == scheduleSemester.Id && schedule.OddWeek,
+                ct
+            )
+        )
+        {
+            return new FetImportResult(
+                false,
+                scheduleYear.Id,
+                scheduleSemester.Id,
+                null,
+                null,
+                "An odd week schedule already exists for this year and semester."
+            );
+        }
+
+        if (
+            await schedulesRepo.AnyScheduleAsync(
+                schedule => schedule.ScheduleSemesterId == scheduleSemester.Id && !schedule.OddWeek,
+                ct
+            )
+        )
+        {
+            return new FetImportResult(
+                false,
+                scheduleYear.Id,
+                scheduleSemester.Id,
+                null,
+                null,
+                "An even week schedule already exists for this year and semester."
+            );
+        }
+
+        int oddWeekScheduleId = await ImportSingleScheduleAsync(
+            oddWeekFetStream,
+            name,
+            scheduleSemester.Id,
+            true,
+            ct
+        );
+        int evenWeekScheduleId = await ImportSingleScheduleAsync(
+            evenWeekFetStream,
+            name,
+            scheduleSemester.Id,
+            false,
+            ct
+        );
+
+        return new FetImportResult(
+            true,
+            scheduleYear.Id,
+            scheduleSemester.Id,
+            oddWeekScheduleId,
+            evenWeekScheduleId,
+            null
+        );
+    }
+
+    private async Task<ScheduleYear> GetOrCreateScheduleYearAsync(int year, CancellationToken ct)
+    {
+        ScheduleYear? existingScheduleYear = await schedulesRepo.GetScheduleYearByValueAsync(
+            year,
+            ct
+        );
+        if (existingScheduleYear != null)
+            return existingScheduleYear;
+
+        ScheduleYear scheduleYear = new() { Value = year };
+        await schedulesRepo.AddScheduleYearAsync(scheduleYear, ct);
+        return scheduleYear;
+    }
+
+    private async Task<int> ImportSingleScheduleAsync(
+        Stream fetStream,
+        string name,
+        int scheduleSemesterId,
+        bool oddWeek,
+        CancellationToken ct
+    )
+    {
+        FetParsedData data = FetXmlParser.Parse(fetStream);
+
+        Schedule schedule = new()
+        {
+            Name = name.Trim(),
+            ScheduleSemesterId = scheduleSemesterId,
             OddWeek = oddWeek,
         };
         await schedulesRepo.AddScheduleAsync(schedule, ct);
 
-        var scheduleId = schedule.Id;
+        int scheduleId = schedule.Id;
 
-        // Days
-        var days = data
-            .Days.Select(d => new Day { Name = d.Name, ScheduleId = scheduleId })
+        List<Day> days = data
+            .Days.Select(day => new Day { Name = day.Name, ScheduleId = scheduleId })
             .ToList();
         await schedulesRepo.AddDaysAsync(days, ct);
 
-        // Hours
-        var hours = data
-            .Hours.Select(h => new Hour { Name = h.Name, ScheduleId = scheduleId })
+        List<Hour> hours = data
+            .Hours.Select(hour => new Hour { Name = hour.Name, ScheduleId = scheduleId })
             .ToList();
         await schedulesRepo.AddHoursAsync(hours, ct);
 
-        // Subjects
-        var subjects = data
-            .Subjects.Select(s => new Subject
+        List<Subject> subjects = data
+            .Subjects.Select(subject => new Subject
             {
-                Name = s.Name,
-                Comments = s.Comments,
+                Name = subject.Name,
+                Comments = subject.Comments,
                 ScheduleId = scheduleId,
             })
             .ToList();
         await schedulesRepo.AddSubjectsAsync(subjects, ct);
-        var subjectByName = subjects.ToFrozenDictionary(
-            s => s.Name,
+
+        FrozenDictionary<string, Subject> subjectByName = subjects.ToFrozenDictionary(
+            subject => subject.Name,
             StringComparer.OrdinalIgnoreCase
         );
-        var subjectByExternalId = subjects
-            .Where(s => s.ExternalSubjectId.HasValue)
-            .ToDictionary(s => s.ExternalSubjectId!.Value, s => s);
+        Dictionary<int, Subject> subjectByExternalId = subjects
+            .Where(subject => subject.ExternalSubjectId.HasValue)
+            .ToDictionary(subject => subject.ExternalSubjectId!.Value, subject => subject);
 
-        // ActivityTags
-        var activityTags = data
-            .ActivityTags.Select(t => new ActivityTag
+        List<ActivityTag> activityTags = data
+            .ActivityTags.Select(tag => new ActivityTag
             {
-                Name = t.Name,
-                Printable = t.Printable,
-                Comments = t.Comments,
+                Name = tag.Name,
+                Printable = tag.Printable,
+                Comments = tag.Comments,
                 ScheduleId = scheduleId,
             })
             .ToList();
         await schedulesRepo.AddActivityTagsAsync(activityTags, ct);
-        var tagByName = activityTags.ToFrozenDictionary(
-            t => t.Name,
+
+        FrozenDictionary<string, ActivityTag> tagByName = activityTags.ToFrozenDictionary(
+            tag => tag.Name,
             StringComparer.OrdinalIgnoreCase
         );
 
-        // Teachers
-        var teachers = data
-            .Teachers.Select(t => new Teacher
+        List<Teacher> teachers = data
+            .Teachers.Select(teacher => new Teacher
             {
-                Name = t.Name,
-                TargetNumberOfHours = t.TargetNumberOfHours,
-                Comments = t.Comments,
+                Name = teacher.Name,
+                TargetNumberOfHours = teacher.TargetNumberOfHours,
+                Comments = teacher.Comments,
                 ScheduleId = scheduleId,
             })
             .ToList();
         await schedulesRepo.AddTeachersAsync(teachers, ct);
-        var teacherByName = teachers.ToFrozenDictionary(
-            t => t.Name,
+
+        FrozenDictionary<string, Teacher> teacherByName = teachers.ToFrozenDictionary(
+            teacher => teacher.Name,
             StringComparer.OrdinalIgnoreCase
         );
-        var teacherByExternalId = teachers
-            .Where(t => t.ExternalTeacherId.HasValue)
-            .ToDictionary(t => t.ExternalTeacherId!.Value, t => t);
+        Dictionary<int, Teacher> teacherByExternalId = teachers
+            .Where(teacher => teacher.ExternalTeacherId.HasValue)
+            .ToDictionary(teacher => teacher.ExternalTeacherId!.Value, teacher => teacher);
 
-        // Buildings
-        var buildings = data
-            .Buildings.Select(b => new Building
+        List<Building> buildings = data
+            .Buildings.Select(building => new Building
             {
-                Name = b.Name,
-                Comments = b.Comments,
+                Name = building.Name,
+                Comments = building.Comments,
                 ScheduleId = scheduleId,
             })
             .ToList();
         await schedulesRepo.AddBuildingsAsync(buildings, ct);
-        var buildingByName = buildings
-            .Where(b => !string.IsNullOrWhiteSpace(b.Name))
-            .ToFrozenDictionary(b => b.Name, StringComparer.OrdinalIgnoreCase);
 
-        // Rooms (resolve Building by name)
-        var rooms = new List<Room>();
-        foreach (var r in data.Rooms)
+        FrozenDictionary<string, Building> buildingByName = buildings
+            .Where(building => !string.IsNullOrWhiteSpace(building.Name))
+            .ToFrozenDictionary(building => building.Name, StringComparer.OrdinalIgnoreCase);
+
+        List<Room> rooms = [];
+        foreach (var room in data.Rooms)
         {
             int? buildingId = null;
             if (
-                !string.IsNullOrWhiteSpace(r.BuildingName)
-                && buildingByName.TryGetValue(r.BuildingName, out var b)
+                !string.IsNullOrWhiteSpace(room.BuildingName)
+                && buildingByName.TryGetValue(room.BuildingName, out Building? building)
             )
-                buildingId = b.Id;
+            {
+                buildingId = building.Id;
+            }
+
             rooms.Add(
                 new Room
                 {
-                    Name = r.Name,
+                    Name = room.Name,
                     BuildingId = buildingId,
-                    Capacity = r.Capacity,
-                    Virtual = r.Virtual,
-                    Comments = r.Comments,
+                    Capacity = room.Capacity,
+                    Virtual = room.Virtual,
+                    Comments = room.Comments,
                     ScheduleId = scheduleId,
                 }
             );
         }
         await schedulesRepo.AddRoomsAsync(rooms, ct);
 
-        var dayByName = days.ToFrozenDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
-        var hourByName = hours.ToFrozenDictionary(h => h.Name, StringComparer.OrdinalIgnoreCase);
-        var fetActivityByFetId = data
-            .Activities.Where(x => x.FetId >= 0)
-            .ToFrozenDictionary(x => x.FetId, x => x);
+        FrozenDictionary<string, Day> dayByName = days.ToFrozenDictionary(
+            day => day.Name,
+            StringComparer.OrdinalIgnoreCase
+        );
+        FrozenDictionary<string, Hour> hourByName = hours.ToFrozenDictionary(
+            hour => hour.Name,
+            StringComparer.OrdinalIgnoreCase
+        );
+        FrozenDictionary<int, FetActivity> fetActivityByFetId = data
+            .Activities.Where(activity => activity.FetId >= 0)
+            .ToFrozenDictionary(activity => activity.FetId, activity => activity);
 
-        // Years, Groups, Subgroups
-        foreach (var y in data.Years)
+        foreach (var scheduleYear in data.Years)
         {
-            var yearEntity = new Year
+            Year yearEntity = new()
             {
-                Name = y.Name,
-                NumberOfStudents = y.NumberOfStudents,
-                Comments = y.Comments,
+                Name = scheduleYear.Name,
+                NumberOfStudents = scheduleYear.NumberOfStudents,
+                Comments = scheduleYear.Comments,
                 ScheduleId = scheduleId,
             };
             await schedulesRepo.AddYearAsync(yearEntity, ct);
 
-            foreach (var g in y.Groups)
+            foreach (var group in scheduleYear.Groups)
             {
-                var groupEntity = new Group
+                Group groupEntity = new()
                 {
-                    Name = g.Name,
-                    NumberOfStudents = g.NumberOfStudents,
-                    Comments = g.Comments,
+                    Name = group.Name,
+                    NumberOfStudents = group.NumberOfStudents,
+                    Comments = group.Comments,
                     YearId = yearEntity.Id,
                     Year = yearEntity,
                 };
                 await schedulesRepo.AddGroupAsync(groupEntity, ct);
 
-                foreach (var sg in g.Subgroups)
+                foreach (var subgroup in group.Subgroups)
                 {
                     await schedulesRepo.AddSubgroupAsync(
                         new Subgroup
                         {
-                            Name = sg.Name,
-                            NumberOfStudents = sg.NumberOfStudents,
-                            Comments = sg.Comments,
+                            Name = subgroup.Name,
+                            NumberOfStudents = subgroup.NumberOfStudents,
+                            Comments = subgroup.Comments,
                             GroupId = groupEntity.Id,
                             Group = groupEntity,
                         },
@@ -192,42 +320,50 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
             }
         }
 
-        // Activities (build fetId -> Activity mapping for slots)
-        var fetIdToActivity = new Dictionary<int, Activity>();
-        foreach (var a in data.Activities)
+        Dictionary<int, Activity> fetIdToActivity = [];
+        foreach (var activityData in data.Activities)
         {
-            var subject = ResolveSubject(subjectByName, subjectByExternalId, a.SubjectName, a.CommentRefs);
+            Subject? subject = ResolveSubject(
+                subjectByName,
+                subjectByExternalId,
+                activityData.SubjectName,
+                activityData.CommentRefs
+            );
             if (subject == null)
                 continue;
 
             int? activityTagId = null;
             if (
-                !string.IsNullOrEmpty(a.ActivityTagName)
-                && tagByName.TryGetValue(a.ActivityTagName, out var tag)
+                !string.IsNullOrEmpty(activityData.ActivityTagName)
+                && tagByName.TryGetValue(activityData.ActivityTagName, out ActivityTag? tag)
             )
+            {
                 activityTagId = tag.Id;
+            }
 
-            var activity = new Activity
+            Activity activity = new()
             {
                 ScheduleId = scheduleId,
                 SubjectId = subject.Id,
                 Subject = subject,
                 ActivityTagId = activityTagId,
-                Duration = a.Duration,
-                TotalDuration = a.TotalDuration,
-                ActivityGroupId = a.ActivityGroupId,
-                Active = a.Active,
-                Comments = a.Comments,
+                Duration = activityData.Duration,
+                TotalDuration = activityData.TotalDuration,
+                ActivityGroupId = activityData.ActivityGroupId,
+                Active = activityData.Active,
+                Comments = activityData.Comments,
             };
             await schedulesRepo.AddActivityAsync(activity, ct);
-            if (a.FetId >= 0)
-                fetIdToActivity[a.FetId] = activity;
 
-            var teacherIdsAdded = new HashSet<int>();
-            var teacherNames = SplitByPlus(a.TeacherName);
-            foreach (var commentRef in a.CommentRefs)
+            if (activityData.FetId >= 0)
+                fetIdToActivity[activityData.FetId] = activity;
+
+            HashSet<int> teacherIdsAdded = [];
+            IReadOnlyList<string> teacherNames = SplitByPlus(activityData.TeacherName);
+
+            foreach (var commentRef in activityData.CommentRefs)
             {
-                var teacher = ResolveTeacher(
+                Teacher? teacher = ResolveTeacher(
                     teacherByName,
                     teacherByExternalId,
                     teacherNames,
@@ -250,7 +386,7 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
 
             foreach (var teacherName in teacherNames)
             {
-                if (!teacherByName.TryGetValue(teacherName, out var teacher))
+                if (!teacherByName.TryGetValue(teacherName, out Teacher? teacher))
                     continue;
                 if (!teacherIdsAdded.Add(teacher.Id))
                     continue;
@@ -267,18 +403,18 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
                 );
             }
 
-            if (a.CommentRefs.Count > 0)
+            if (activityData.CommentRefs.Count > 0)
             {
-                foreach (var commentRef in a.CommentRefs)
+                foreach (var commentRef in activityData.CommentRefs)
                 {
-                    var specializationExternalId = commentRef.SpecializationExternalId is > 0
+                    int? specializationExternalId = commentRef.SpecializationExternalId is > 0
                         ? commentRef.SpecializationExternalId
                         : null;
-                    var studentsName = !string.IsNullOrWhiteSpace(commentRef.GroupExternalId)
+                    string studentsName = !string.IsNullOrWhiteSpace(commentRef.GroupExternalId)
                         ? $"group:{commentRef.GroupExternalId}"
                         : specializationExternalId.HasValue
                             ? $"specialization:{specializationExternalId.Value}"
-                            : a.Students;
+                            : activityData.Students;
 
                     if (string.IsNullOrWhiteSpace(studentsName))
                         continue;
@@ -290,7 +426,8 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
                             StudentsName = studentsName,
                             PlanMatterProviderExternalId = commentRef.PlanMatterProviderExternalId,
                             FacultyExternalId = commentRef.FacultyExternalId,
-                            MetaSpecializationExternalId = commentRef.MetaSpecializationExternalId,
+                            MetaSpecializationExternalId =
+                                commentRef.MetaSpecializationExternalId,
                             StudyYearNumber = commentRef.StudyYearNumber,
                             GroupExternalId = commentRef.GroupExternalId,
                             SpecializationExternalId = specializationExternalId,
@@ -303,16 +440,16 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
             }
             else
             {
-                var studentNames = SplitByPlus(a.Students);
-                foreach (var sn in studentNames)
+                foreach (var studentsName in SplitByPlus(activityData.Students))
                 {
-                    if (string.IsNullOrWhiteSpace(sn))
+                    if (string.IsNullOrWhiteSpace(studentsName))
                         continue;
+
                     await schedulesRepo.AddActivityStudentsAsync(
                         new ActivityStudents
                         {
                             ActivityId = activity.Id,
-                            StudentsName = sn,
+                            StudentsName = studentsName,
                             Activity = activity,
                         },
                         ct
@@ -321,30 +458,30 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
             }
         }
 
-        // ActivitySlots (timetable: activity at day/hour, including multi-hour activities)
-        var hourOrder = data
-            .Hours.Select((h, i) => (Name: h.Name, Index: i))
-            .ToFrozenDictionary(x => x.Name, x => x.Index, StringComparer.OrdinalIgnoreCase);
+        FrozenDictionary<string, int> hourOrder = data
+            .Hours.Select((hour, index) => (hour.Name, index))
+            .ToFrozenDictionary(item => item.Name, item => item.index, StringComparer.OrdinalIgnoreCase);
 
-        var activitySlots = new List<ActivitySlot>();
+        List<ActivitySlot> activitySlots = [];
         foreach (var slot in data.ActivitySlots)
         {
-            if (!fetIdToActivity.TryGetValue(slot.FetActivityId, out var activity))
+            if (!fetIdToActivity.TryGetValue(slot.FetActivityId, out Activity? activity))
                 continue;
-            if (!dayByName.TryGetValue(slot.DayName, out var day))
+            if (!dayByName.TryGetValue(slot.DayName, out Day? day))
                 continue;
-            if (!hourOrder.TryGetValue(slot.HourName, out var startIndex))
+            if (!hourOrder.TryGetValue(slot.HourName, out int startIndex))
                 continue;
 
-            var duration = fetActivityByFetId.TryGetValue(slot.FetActivityId, out var fa)
+            int duration = fetActivityByFetId.TryGetValue(slot.FetActivityId, out FetActivity? fa)
                 ? fa.Duration
                 : 1;
 
-            for (var i = 0; i < duration && startIndex + i < data.Hours.Count; i++)
+            for (int i = 0; i < duration && startIndex + i < data.Hours.Count; i++)
             {
-                var hourName = data.Hours[startIndex + i].Name;
-                if (!hourByName.TryGetValue(hourName, out var slotHour))
+                string hourName = data.Hours[startIndex + i].Name;
+                if (!hourByName.TryGetValue(hourName, out Hour? slotHour))
                     continue;
+
                 activitySlots.Add(
                     new ActivitySlot
                     {
@@ -358,14 +495,17 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
         }
         await schedulesRepo.AddActivitySlotsAsync(activitySlots, ct);
 
-        return new FetImportResult(true, scheduleId, null);
+        return scheduleId;
     }
+
+    private static FetImportResult Failure(string message) =>
+        new(false, null, null, null, null, message);
 
     private static IReadOnlyList<string> SplitByPlus(string value)
     {
         return value
             .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Where(item => !string.IsNullOrWhiteSpace(item))
             .ToList();
     }
 
@@ -381,25 +521,27 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
             if (!commentRef.SubjectExternalId.HasValue)
                 continue;
 
-            var subjectExternalId = commentRef.SubjectExternalId.Value;
-            if (subjectByExternalId.TryGetValue(subjectExternalId, out var subjectById))
+            int subjectExternalId = commentRef.SubjectExternalId.Value;
+            if (subjectByExternalId.TryGetValue(subjectExternalId, out Subject? subjectById))
                 return subjectById;
 
-            if (!subjectByName.TryGetValue(subjectName, out var subjectByActivityName))
+            if (!subjectByName.TryGetValue(subjectName, out Subject? subjectByActivityName))
                 continue;
 
             if (
                 subjectByActivityName.ExternalSubjectId.HasValue
                 && subjectByActivityName.ExternalSubjectId.Value != subjectExternalId
             )
+            {
                 continue;
+            }
 
             subjectByActivityName.ExternalSubjectId = subjectExternalId;
             subjectByExternalId[subjectExternalId] = subjectByActivityName;
             return subjectByActivityName;
         }
 
-        return subjectByName.TryGetValue(subjectName, out var subjectByFallbackName)
+        return subjectByName.TryGetValue(subjectName, out Subject? subjectByFallbackName)
             ? subjectByFallbackName
             : null;
     }
@@ -414,19 +556,21 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
         if (!teacherExternalId.HasValue)
             return null;
 
-        if (teacherByExternalId.TryGetValue(teacherExternalId.Value, out var teacherById))
+        if (teacherByExternalId.TryGetValue(teacherExternalId.Value, out Teacher? teacherById))
             return teacherById;
 
         foreach (var teacherName in teacherNames)
         {
-            if (!teacherByName.TryGetValue(teacherName, out var teacherByActivityName))
+            if (!teacherByName.TryGetValue(teacherName, out Teacher? teacherByActivityName))
                 continue;
 
             if (
                 teacherByActivityName.ExternalTeacherId.HasValue
                 && teacherByActivityName.ExternalTeacherId.Value != teacherExternalId.Value
             )
+            {
                 continue;
+            }
 
             teacherByActivityName.ExternalTeacherId = teacherExternalId.Value;
             teacherByExternalId[teacherExternalId.Value] = teacherByActivityName;
