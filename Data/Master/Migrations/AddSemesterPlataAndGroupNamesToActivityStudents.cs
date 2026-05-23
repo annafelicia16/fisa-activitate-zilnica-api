@@ -2,7 +2,6 @@ using FluentMigrator;
 
 namespace FisaActivitateZilnicaApi.Data.Master.Migrations;
 
-// 2026.05.11 - 001
 [Migration(20260511001)]
 public class AddSemesterPlataAndGroupNamesToActivityStudents : Migration
 {

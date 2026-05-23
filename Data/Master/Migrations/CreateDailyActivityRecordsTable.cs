@@ -2,7 +2,6 @@ using FluentMigrator;
 
 namespace FisaActivitateZilnicaApi.Data.Master.Migrations;
 
-// 2026.04.06 - 001
 [Migration(20260406001)]
 public class CreateDailyActivityRecordsTable : Migration
 {

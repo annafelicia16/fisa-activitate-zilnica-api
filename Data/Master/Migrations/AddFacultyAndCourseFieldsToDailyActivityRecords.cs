@@ -2,7 +2,6 @@ using FluentMigrator;
 
 namespace FisaActivitateZilnicaApi.Data.Master.Migrations;
 
-// 2026.05.09 - 001
 [Migration(20260509001)]
 public class AddFacultyAndCourseFieldsToDailyActivityRecords : Migration
 {

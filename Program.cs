@@ -59,7 +59,6 @@ else
 
 #region VALIDATE ENVIRONMENT VARIABLES
 
-// Validate all required environment variables
 string[] requiredEnvVars =
 [
     "UNIVERSITY_DB_HOST",
@@ -153,20 +152,11 @@ builder.Services.AddScoped<
 
 #endregion
 
-#region Helpers
-
-#endregion
-
-#region Utility
-
-#endregion
-
 #region Configuration
 
 builder.Services.AddLogging();
 builder.Services.AddHttpClient();
 
-// Add CORS for the configured client URL
 string clientUrl = Env.GetString("CLIENT_URL");
 builder.Services.AddCors(options =>
 {
@@ -183,7 +173,6 @@ builder.Services.AddCors(options =>
     );
 });
 
-// Add Swagger only in non-production environments
 string environment = Env.GetString("ENVIRONMENT") ?? "development";
 if (!string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase))
 {
@@ -197,17 +186,13 @@ builder.WebHost.UseKestrel(options =>
     options.ListenAnyIP(int.Parse(Env.GetString("API_PORT")));
 });
 
-// Configure logging based on environment
 if (string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase))
 {
-    // In production, disable all logging providers
     builder.Logging.ClearProviders();
-    // Optionally, you can set minimum log level to None to completely disable logging
     builder.Logging.SetMinimumLevel(LogLevel.None);
 }
 else
 {
-    // In non-production environments, use console logging
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole();
 }
@@ -258,7 +243,6 @@ builder
 
 WebApplication app = builder.Build();
 
-// Configure Swagger only in non-production environments
 if (!string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase))
 {
     if (app.Environment.IsDevelopment())
@@ -275,7 +259,6 @@ if (!string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase
     });
 }
 
-// Use CORS
 app.UseCors("Client");
 
 app.MapControllers();
