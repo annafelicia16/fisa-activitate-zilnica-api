@@ -68,6 +68,7 @@ public interface ISchedulesRepository
         int externalTeacherId,
         CancellationToken ct = default
     );
+    Task<IReadOnlyList<Schedule>> GetAllSchedulesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<int>> GetTeacherFacultyExternalIdsAsync(
         int externalTeacherId,
         CancellationToken ct = default

@@ -27,4 +27,10 @@
     <PackageReference Include="Scalar.AspNetCore" Version="2.12.6" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Resources/Fonts/*.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

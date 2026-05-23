@@ -199,7 +199,6 @@ public class SchedulesQueryService(
                 departmentName: null,
                 year: null,
                 groupName: null,
-                subgroupName: null,
                 subjectName: null,
                 roomName: null,
                 revenueType: null,
@@ -355,6 +354,19 @@ public class SchedulesQueryService(
             specializareName = specialization.Denumire;
         }
 
+        // Friendly AGSIS group name (dbo.Grupe.Nume, e.g. "8MF141") resolved
+        // from the first parseable id in GroupExternalId. Skips whole-class
+        // sentinels and unparseable values.
+        string? grupaName = null;
+        if (groups is not null)
+        {
+            int groupId = TryParseFirstInt(x.GroupExternalId);
+            if (groupId > 0 && groups.TryGetValue(groupId, out var group))
+            {
+                grupaName = group.Nume;
+            }
+        }
+
         return new TeacherScheduleSlotResponse(
             x.SlotId,
             x.ScheduleId,
@@ -380,7 +392,8 @@ public class SchedulesQueryService(
             materieName,
             materieShortName,
             facultateName,
-            specializareName
+            specializareName,
+            grupaName
         );
     }
 
@@ -399,6 +412,24 @@ public class SchedulesQueryService(
             ct
         );
 
+        return schedules
+            .Select(schedule => new ScheduleResponse(
+                schedule.Id,
+                schedule.Name,
+                schedule.ScheduleSemester.ScheduleYear.Value,
+                schedule.ScheduleSemester.Number,
+                schedule.ScheduleSemester.StartDate,
+                schedule.ScheduleSemester.EndDate,
+                schedule.OddWeek
+            ))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<ScheduleResponse>> GetAllSchedulesAsync(
+        CancellationToken ct = default
+    )
+    {
+        var schedules = await schedulesRepository.GetAllSchedulesAsync(ct);
         return schedules
             .Select(schedule => new ScheduleResponse(
                 schedule.Id,

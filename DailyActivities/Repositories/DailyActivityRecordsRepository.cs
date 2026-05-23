@@ -32,7 +32,6 @@ public class DailyActivityRecordsRepository(MasterDbContext masterDbContext, IMa
         string? departmentName,
         int? year,
         string? groupName,
-        string? subgroupName,
         string? subjectName,
         string? roomName,
         RevenueType? revenueType,
@@ -56,11 +55,6 @@ public class DailyActivityRecordsRepository(MasterDbContext masterDbContext, IMa
 
         if (groupName != null && !string.IsNullOrWhiteSpace(groupName))
             query = query.Where(dar => dar.GroupName.Contains(groupName));
-
-        if (subgroupName != null && !string.IsNullOrWhiteSpace(subgroupName))
-            query = query.Where(dar =>
-                dar.SubgroupName != null && dar.SubgroupName.Contains(subgroupName)
-            );
 
         if (subjectName != null && !string.IsNullOrWhiteSpace(subjectName))
             query = query.Where(dar => dar.SubjectName.Contains(subjectName));

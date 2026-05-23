@@ -25,5 +25,9 @@ public sealed record TeacherScheduleSlotResponse(
     string? MaterieName,
     string? MaterieShortName,
     string? FacultateName,
-    string? SpecializareName
+    string? SpecializareName,
+    // Friendly AGSIS dbo.Grupe.Nume (e.g. "8MF141"). Resolved from IdGrupa
+    // when it points at a real group row; null otherwise (whole-class slots,
+    // unparseable IDs, or the FET-only "GroupNames" text path).
+    string? GrupaName
 );

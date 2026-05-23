@@ -30,7 +30,6 @@ public abstract class DailyActivityRecordsApiController : ControllerBase
         [FromQuery] string? departmentName,
         [FromQuery] int? year,
         [FromQuery] string? groupName,
-        [FromQuery] string? subgroupName,
         [FromQuery] string? subjectName,
         [FromQuery] string? roomName,
         [FromQuery] RevenueType? revenueType,

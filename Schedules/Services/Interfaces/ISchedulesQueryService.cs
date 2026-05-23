@@ -17,5 +17,6 @@ public interface ISchedulesQueryService
         int externalTeacherId,
         CancellationToken ct = default
     );
+    Task<IReadOnlyList<ScheduleResponse>> GetAllSchedulesAsync(CancellationToken ct = default);
     Task<int> BackfillActivityStudentsCommentRefsAsync(CancellationToken ct = default);
 }

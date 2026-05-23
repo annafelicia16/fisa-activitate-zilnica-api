@@ -1,95 +1,95 @@
+using FisaActivitateZilnicaApi.DailyActivities.DTOs.Responses;
+using FisaActivitateZilnicaApi.DailyActivities.Services.Interfaces;
+using FisaActivitateZilnicaApi.ExternalTeachers.DTOs.Responses;
+using FisaActivitateZilnicaApi.ExternalTeachers.Services.Interfaces;
+using FisaActivitateZilnicaApi.SupplementaryActivities.DTOs.Responses;
+using FisaActivitateZilnicaApi.SupplementaryActivities.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
 
 namespace FisaActivitateZilnicaApi.Export.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ExportController : ControllerBase
+public class ExportController(
+    IExternalTeachersQueryService externalTeachersQueryService,
+    IDailyActivityRecordsQueryService dailyActivityRecordsQueryService,
+    ISupplementaryActivitiesQueryService supplementaryActivitiesQueryService
+) : ControllerBase
 {
-    [HttpGet("export-pdf")]
+    [HttpGet("monthly-pdf")]
     [Produces("application/pdf")]
-    [ProducesResponseType(statusCode: 200)]
-    public IActionResult ExportDailyActivitySheetPdf()
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ExportMonthlyFisaActivitatePdf(
+        [FromQuery] int teacherId,
+        [FromQuery] int year,
+        [FromQuery] int month,
+        CancellationToken ct = default
+    )
     {
-        byte[] pdfBytes = Document.Create(document =>
+        if (teacherId <= 0)
         {
-            document.Page(page =>
-            {
-                page.Size(PageSizes.A4);
-                page.Margin(40);
-                page.DefaultTextStyle(x => x.FontFamily(Fonts.Arial).FontSize(12));
+            return BadRequest("Query parameter 'teacherId' must be greater than 0.");
+        }
+        if (year < 1900 || year > 9999)
+        {
+            return BadRequest("Query parameter 'year' is out of range.");
+        }
+        if (month < 1 || month > 12)
+        {
+            return BadRequest("Query parameter 'month' must be between 1 and 12.");
+        }
 
-                page.Header()
-                    .PaddingBottom(10)
-                    .AlignCenter()
-                    .Text("Fișă de Activitate Zilnică")
-                    .SemiBold()
-                    .FontSize(18);
+        TeacherProfileResponse teacher;
+        try
+        {
+            teacher = await externalTeachersQueryService.GetTeacherProfileAsync(teacherId, ct);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
 
-                page.Content()
-                    .PaddingVertical(10)
-                    .Column(column =>
-                    {
-                        column.Item().Table(table =>
-                        {
-                            table.ColumnsDefinition(columns =>
-                            {
-                                columns.RelativeColumn(2);
-                                columns.RelativeColumn(5);
-                                columns.RelativeColumn(1);
-                            });
+        DateTime firstDayOfMonth = new(year, month, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        DateTime firstDayOfNextMonth = firstDayOfMonth.AddMonths(1);
 
-                            table.Header(header =>
-                            {
-                                header.Cell().Element(TableHeaderCell).Text("Dată");
-                                header.Cell().Element(TableHeaderCell).Text("Activitate Didactică");
-                                header.Cell().Element(TableHeaderCell).Text("Ore");
-                            });
+        IEnumerable<GetDailyActivityRecordResponse> recordsEnum =
+            await dailyActivityRecordsQueryService.QueryDailyActivityRecordsAsync(
+                teacherId: teacherId,
+                departmentName: null,
+                year: null,
+                groupName: null,
+                subjectName: null,
+                roomName: null,
+                revenueType: null,
+                activityType: null,
+                startDate: firstDayOfMonth,
+                endDate: firstDayOfNextMonth
+            );
 
-                            table.Cell().Element(TableBodyCell).Text("20.04.2026");
-                            table.Cell()
-                                .Element(TableBodyCell)
-                                .Text("Sisteme Distribuite — conf. dr. Ștefan Țițeica");
-                            table.Cell().Element(TableBodyCell).Text("2");
+        List<GetDailyActivityRecordResponse> records = recordsEnum
+            .OrderBy(r => r.StartDate)
+            .ToList();
 
-                            table.Cell().Element(TableBodyCell).Text("21.04.2026");
-                            table.Cell()
-                                .Element(TableBodyCell)
-                                .Text("Laborator Sisteme Distribuite (grupa 3141A)");
-                            table.Cell().Element(TableBodyCell).Text("4");
-                        });
-                    });
+        IEnumerable<GetSupplementaryActivityResponse> supplementaryEnum =
+            await supplementaryActivitiesQueryService.QuerySupplementaryActivitiesAsync(
+                teacherId,
+                firstDayOfMonth,
+                firstDayOfNextMonth
+            );
 
-                page.Footer()
-                    .PaddingTop(10)
-                    .AlignCenter()
-                    .Text(text =>
-                    {
-                        text.Span("Pagina ");
-                        text.CurrentPageNumber();
-                        text.Span(" / ");
-                        text.TotalPages();
-                    });
-            });
-        }).GeneratePdf();
+        List<GetSupplementaryActivityResponse> supplementary = supplementaryEnum.ToList();
 
-        return File(pdfBytes, "application/pdf", "Fisa_Activitate.pdf");
-    }
+        byte[] pdfBytes = FisaActivitateDocument.Render(
+            new FisaActivitateInput(teacher, year, month, records, supplementary)
+        );
 
-    private static IContainer TableHeaderCell(IContainer container)
-    {
-        return container
-            .BorderBottom(1)
-            .BorderColor(Colors.Grey.Medium)
-            .PaddingVertical(6)
-            .DefaultTextStyle(x => x.FontFamily(Fonts.Arial).SemiBold());
-    }
-
-    private static IContainer TableBodyCell(IContainer container)
-    {
-        return container.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingVertical(5);
+        string filename = $"Fisa_Activitate_{year}_{month:00}_{teacherId}.pdf";
+        return File(pdfBytes, "application/pdf", filename);
     }
 }

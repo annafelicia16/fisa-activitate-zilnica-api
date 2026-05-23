@@ -11,7 +11,6 @@ public class UpdateDailyActivityRecordRequest
     public string? CourseType { get; set; }
     public int? Year { get; set; }
     public string? GroupName { get; set; }
-    public string? SubgroupName { get; set; }
     public string? SubjectName { get; set; }
     public string? RoomName { get; set; }
     public RevenueType? RevenueType { get; set; }

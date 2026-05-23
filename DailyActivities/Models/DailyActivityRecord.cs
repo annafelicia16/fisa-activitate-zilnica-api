@@ -37,9 +37,6 @@ public class DailyActivityRecord
     [Column("GroupName")]
     public required string GroupName { get; set; }
 
-    [Column("SubgroupName")]
-    public string? SubgroupName { get; set; }
-
     [Required]
     [Column("SubjectName")]
     public required string SubjectName { get; set; }

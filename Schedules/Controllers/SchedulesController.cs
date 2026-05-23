@@ -125,6 +125,14 @@ public class SchedulesController(
         return Ok(new BackfillResponse(updated));
     }
 
+    public override async Task<ActionResult<IReadOnlyList<ScheduleResponse>>> GetAllSchedules(
+        CancellationToken ct = default
+    )
+    {
+        var schedules = await schedulesQueryService.GetAllSchedulesAsync(ct);
+        return Ok(schedules);
+    }
+
     private static bool HasFetExtension(IFormFile file)
     {
         var ext = Path.GetExtension(file.FileName);

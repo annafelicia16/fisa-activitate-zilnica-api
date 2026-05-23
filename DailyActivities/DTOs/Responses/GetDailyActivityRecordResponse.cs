@@ -12,7 +12,6 @@ public class GetDailyActivityRecordResponse
     public required string CourseType { get; set; }
     public required int Year { get; set; }
     public required string GroupName { get; set; }
-    public string? SubgroupName { get; set; }
     public required string SubjectName { get; set; }
     public required string RoomName { get; set; }
     public required RevenueType RevenueType { get; set; }

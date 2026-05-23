@@ -12,7 +12,6 @@ public interface IDailyActivityRecordsRepository
         string? departmentName,
         int? year,
         string? groupName,
-        string? subgroupName,
         string? subjectName,
         string? roomName,
         RevenueType? revenueType,

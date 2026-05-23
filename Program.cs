@@ -26,10 +26,23 @@ using FisaActivitateZilnicaApi.SupplementaryActivities.Services.Interfaces;
 using FisaActivitateZilnicaApi.System;
 using FluentMigrator.Runner;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Drawing;
 using QuestPDF.Infrastructure;
 using Scalar.AspNetCore;
 
 QuestPDF.Settings.License = LicenseType.Community;
+
+// WHY: bundle DejaVu Sans so Romanian diacritics render in Linux containers where
+// system fonts like Calibri/Arial are absent.
+string fontsDirectory = Path.Combine(AppContext.BaseDirectory, "Resources", "Fonts");
+if (Directory.Exists(fontsDirectory))
+{
+    foreach (string fontPath in Directory.EnumerateFiles(fontsDirectory, "*.ttf"))
+    {
+        using FileStream fontStream = File.OpenRead(fontPath);
+        FontManager.RegisterFont(fontStream);
+    }
+}
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 

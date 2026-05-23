@@ -329,6 +329,19 @@ public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Schedule>> GetAllSchedulesAsync(CancellationToken ct = default)
+    {
+        return await db
+            .Schedules.AsNoTracking()
+            .Include(schedule => schedule.ScheduleSemester)
+            .ThenInclude(scheduleSemester => scheduleSemester.ScheduleYear)
+            .OrderByDescending(schedule => schedule.ScheduleSemester.ScheduleYear.Value)
+            .ThenByDescending(schedule => schedule.ScheduleSemester.Number)
+            .ThenByDescending(schedule => schedule.OddWeek)
+            .ThenBy(schedule => schedule.Name)
+            .ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<int>> GetTeacherFacultyExternalIdsAsync(
         int externalTeacherId,
         CancellationToken ct = default
