@@ -268,6 +268,21 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
         }
         await schedulesRepo.AddRoomsAsync(rooms, ct);
 
+        // Resolve which Room each Activity is bound to via Space_Constraints_List /
+        // ConstraintActivityPreferredRoom. FET stores this binding per-activity (not per
+        // slot), so every slot for a given activity uses the same room.
+        FrozenDictionary<string, Room> roomByName = rooms
+            .Where(room => !string.IsNullOrWhiteSpace(room.Name))
+            .ToFrozenDictionary(room => room.Name, StringComparer.OrdinalIgnoreCase);
+        Dictionary<int, int> roomIdByFetActivityId = new();
+        foreach (var activityRoom in data.ActivityRooms)
+        {
+            if (roomByName.TryGetValue(activityRoom.RoomName, out Room? matchedRoom))
+            {
+                roomIdByFetActivityId[activityRoom.FetActivityId] = matchedRoom.Id;
+            }
+        }
+
         FrozenDictionary<string, Day> dayByName = days.ToFrozenDictionary(
             day => day.Name,
             StringComparer.OrdinalIgnoreCase
@@ -429,7 +444,11 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
                             MetaSpecializationExternalId =
                                 commentRef.MetaSpecializationExternalId,
                             StudyYearNumber = commentRef.StudyYearNumber,
+                            Semester = commentRef.Semester,
+                            PlataNB = commentRef.PlataNB,
+                            OldActivityTag = commentRef.OldActivityTag,
                             GroupExternalId = commentRef.GroupExternalId,
+                            GroupNames = commentRef.GroupNames,
                             SpecializationExternalId = specializationExternalId,
                             SubjectExternalId = commentRef.SubjectExternalId,
                             Activity = activity,
@@ -476,6 +495,13 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
                 ? fa.Duration
                 : 1;
 
+            int? slotRoomId = roomIdByFetActivityId.TryGetValue(
+                slot.FetActivityId,
+                out int rid
+            )
+                ? rid
+                : null;
+
             for (int i = 0; i < duration && startIndex + i < data.Hours.Count; i++)
             {
                 string hourName = data.Hours[startIndex + i].Name;
@@ -489,6 +515,7 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
                         ActivityId = activity.Id,
                         DayId = day.Id,
                         HourId = slotHour.Id,
+                        RoomId = slotRoomId,
                     }
                 );
             }

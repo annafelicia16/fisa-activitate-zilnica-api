@@ -62,4 +62,14 @@ public abstract class DailyActivityRecordsApiController : ControllerBase
     public abstract Task<ActionResult<GetDailyActivityRecordResponse>> DeleteDailyActivityRecord(
         [FromRoute] string id
     );
+
+    [HttpGet("monthly-summary")]
+    [ProducesResponseType(
+        statusCode: 200,
+        type: typeof(IEnumerable<MonthlyActivitySummaryResponse>)
+    )]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    public abstract Task<
+        ActionResult<IEnumerable<MonthlyActivitySummaryResponse>>
+    > GetMonthlyActivitySummary([FromQuery] int teacherId);
 }

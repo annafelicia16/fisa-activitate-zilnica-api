@@ -57,6 +57,15 @@ public class DailyActivityRecordsCommandService(
         if (string.IsNullOrWhiteSpace(request.DepartmentName))
             throw new ArgumentException("Field 'departmentName' is required.");
 
+        if (string.IsNullOrWhiteSpace(request.FacultyName))
+            throw new ArgumentException("Field 'facultyName' is required.");
+
+        if (string.IsNullOrWhiteSpace(request.StudyProgram))
+            throw new ArgumentException("Field 'studyProgram' is required.");
+
+        if (string.IsNullOrWhiteSpace(request.CourseType))
+            throw new ArgumentException("Field 'courseType' is required.");
+
         if (request.Year <= 0)
             throw new ArgumentException("Field 'year' must be greater than 0.");
 
@@ -69,6 +78,9 @@ public class DailyActivityRecordsCommandService(
         if (string.IsNullOrWhiteSpace(request.RoomName))
             throw new ArgumentException("Field 'roomName' is required.");
 
+        if (request.ConventionalHours < 0)
+            throw new ArgumentException("Field 'conventionalHours' must be 0 or greater.");
+
         if (request.StartDate > request.EndDate)
             throw new ArgumentException("'startDate' cannot be greater than 'endDate'.");
     }
@@ -80,6 +92,9 @@ public class DailyActivityRecordsCommandService(
 
         if (request.Year.HasValue && request.Year.Value <= 0)
             throw new ArgumentException("Field 'year' must be greater than 0.");
+
+        if (request.ConventionalHours.HasValue && request.ConventionalHours.Value < 0)
+            throw new ArgumentException("Field 'conventionalHours' must be 0 or greater.");
 
         if (
             request.StartDate.HasValue

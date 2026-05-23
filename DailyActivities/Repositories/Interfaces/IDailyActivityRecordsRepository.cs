@@ -20,6 +20,7 @@ public interface IDailyActivityRecordsRepository
         DateTime? startDate,
         DateTime? endDate
     );
+    Task<IEnumerable<MonthlyActivitySummaryResponse>> GetMonthlySummaries(int externalTeacherId);
     Task<GetDailyActivityRecordResponse> CreateDailyActivityRecord(
         CreateDailyActivityRecordRequest request
     );

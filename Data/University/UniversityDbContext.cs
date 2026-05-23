@@ -1,16 +1,24 @@
+using FisaActivitateZilnicaApi.ExternalReferences.Models;
 using FisaActivitateZilnicaApi.ExternalTeachers.Models;
-using FisaActivitateZilnicaApi.Schedules.Models;
 using Microsoft.EntityFrameworkCore;
-using SubjectModel = FisaActivitateZilnicaApi.Schedules.Models.Subject;
 
 namespace FisaActivitateZilnicaApi.Data.University;
 
 public class UniversityDbContext(DbContextOptions<UniversityDbContext> options) : DbContext(options)
 {
     public DbSet<ExternalTeacher> ExternalTeachers => Set<ExternalTeacher>();
+    public DbSet<ExternalSubject> ExternalSubjects => Set<ExternalSubject>();
+    public DbSet<ExternalFaculty> ExternalFaculties => Set<ExternalFaculty>();
+    public DbSet<ExternalSpecialization> ExternalSpecializations =>
+        Set<ExternalSpecialization>();
+    public DbSet<ExternalGroup> ExternalGroups => Set<ExternalGroup>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<ExternalTeacher>().ToTable("Profesor", "dbo");
+        modelBuilder.Entity<ExternalSubject>().ToTable("Materie", "dbo");
+        modelBuilder.Entity<ExternalFaculty>().ToTable("Facultate", "dbo");
+        modelBuilder.Entity<ExternalSpecialization>().ToTable("Specializare", "dbo");
+        modelBuilder.Entity<ExternalGroup>().ToTable("Grupe", "dbo");
     }
 }

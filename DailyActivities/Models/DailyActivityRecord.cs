@@ -18,6 +18,18 @@ public class DailyActivityRecord
     public required string DepartmentName { get; set; }
 
     [Required]
+    [Column("FacultyName")]
+    public required string FacultyName { get; set; }
+
+    [Required]
+    [Column("StudyProgram")]
+    public required string StudyProgram { get; set; }
+
+    [Required]
+    [Column("CourseType")]
+    public required string CourseType { get; set; }
+
+    [Required]
     [Column("Year")]
     public required int Year { get; set; }
 
@@ -43,6 +55,10 @@ public class DailyActivityRecord
     [Required]
     [Column("ActivityType")]
     public required ActivityType ActivityType { get; set; }
+
+    [Required]
+    [Column("ConventionalHours")]
+    public required double ConventionalHours { get; set; }
 
     [Column("Observations")]
     public string? Observations { get; set; }

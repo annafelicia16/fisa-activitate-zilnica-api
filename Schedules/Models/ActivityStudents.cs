@@ -29,8 +29,20 @@ public class ActivityStudents
     [Column("StudyYearNumber")]
     public int? StudyYearNumber { get; set; }
 
+    [Column("Semester")]
+    public int? Semester { get; set; }
+
+    [Column("PlataNB")]
+    public int? PlataNB { get; set; }
+
+    [Column("OldActivityTag")]
+    public string? OldActivityTag { get; set; }
+
     [Column("GroupExternalId")]
     public string? GroupExternalId { get; set; }
+
+    [Column("GroupNames")]
+    public string? GroupNames { get; set; }
 
     [Column("SpecializationExternalId")]
     public int? SpecializationExternalId { get; set; }

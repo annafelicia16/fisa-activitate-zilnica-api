@@ -7,7 +7,7 @@ public class ExternalTeacher
 {
     [Key]
     [Column("ID_Profesor")]
-    public required long ID_Profesor { get; set; }
+    public required long IdProfesor { get; set; }
 
     [Required]
     [Column("Nume")]
@@ -21,8 +21,8 @@ public class ExternalTeacher
     public string? Email { get; set; }
 
     [Column("CNP")]
-    public string? CNP { get; set; }
+    public string? Cnp { get; set; }
 
     public override string ToString() =>
-        $"{ID_Profesor} - {Nume} {Prenume} - {CNP ?? "N/A"} ({Email ?? "N/A"})";
+        $"{IdProfesor} - {Nume} {Prenume} - {Cnp ?? "N/A"} ({Email ?? "N/A"})";
 }

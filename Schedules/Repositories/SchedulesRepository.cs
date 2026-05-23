@@ -3,6 +3,7 @@ using FisaActivitateZilnicaApi.Data.Master;
 using FisaActivitateZilnicaApi.Schedules.DTOs.Payloads;
 using FisaActivitateZilnicaApi.Schedules.Models;
 using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.Schedules.Services.FetParser;
 using Microsoft.EntityFrameworkCore;
 
 namespace FisaActivitateZilnicaApi.Schedules.Repositories;
@@ -171,6 +172,10 @@ public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
             join hour in db.Hours.AsNoTracking() on slot.HourId equals hour.Id
             join subject in db.Subjects.AsNoTracking() on activity.SubjectId equals subject.Id
             join activityStudents in db.ActivityStudents.AsNoTracking() on activity.Id equals activityStudents.ActivityId
+            join tag in db.ActivityTags.AsNoTracking() on activity.ActivityTagId equals tag.Id into tagJoin
+            from tag in tagJoin.DefaultIfEmpty()
+            join room in db.Rooms.AsNoTracking() on slot.RoomId equals room.Id into roomJoin
+            from room in roomJoin.DefaultIfEmpty()
             where
                 slot.ScheduleId == scheduleId
                 && day.Name == dayName
@@ -184,16 +189,123 @@ public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
                 hour.Name,
                 day.Name,
                 subject.Name,
+                tag != null ? tag.Name : null,
+                room != null ? room.Name : null,
+                activity.Duration,
                 teacher.ExternalTeacherId,
                 activityStudents.PlanMatterProviderExternalId,
                 activityStudents.FacultyExternalId,
                 activityStudents.MetaSpecializationExternalId,
                 activityStudents.StudyYearNumber,
+                activityStudents.Semester,
+                activityStudents.PlataNB,
+                activityStudents.OldActivityTag,
                 activityStudents.GroupExternalId,
+                activityStudents.GroupNames,
                 activityStudents.SpecializationExternalId ?? -1,
                 activityStudents.SubjectExternalId ?? subject.ExternalSubjectId
             )
         ).ToListAsync(ct);
+
+        return results;
+    }
+
+    public Task<int?> FindInternalTeacherIdAsync(
+        int scheduleId,
+        int externalTeacherId,
+        CancellationToken ct = default
+    ) =>
+        db.Teachers.AsNoTracking()
+            .Where(t => t.ScheduleId == scheduleId && t.ExternalTeacherId == externalTeacherId)
+            .Select(t => (int?)t.Id)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<TeacherScheduleSlotResult>> GetTeacherDaySlotsByInternalIdAsync(
+        int scheduleId,
+        IReadOnlyCollection<string> dayNames,
+        int teacherId,
+        int externalTeacherId,
+        CancellationToken ct = default
+    )
+    {
+        // Pull the raw slot rows plus each activity's Comments JSON.
+        // Then parse the JSON in memory — this is the source of truth for
+        // teacher-facing fields (grupa, plataNB, oldactivitytag, etc.) and avoids
+        // depending on the ActivityStudents columns being backfilled.
+        var rawRows = await (
+            from slot in db.ActivitySlots.AsNoTracking()
+            join activity in db.Activities.AsNoTracking() on slot.ActivityId equals activity.Id
+            join activityTeacher in db.ActivityTeachers.AsNoTracking() on activity.Id equals activityTeacher.ActivityId
+            join day in db.Days.AsNoTracking() on slot.DayId equals day.Id
+            join hour in db.Hours.AsNoTracking() on slot.HourId equals hour.Id
+            join subject in db.Subjects.AsNoTracking() on activity.SubjectId equals subject.Id
+            join tag in db.ActivityTags.AsNoTracking() on activity.ActivityTagId equals tag.Id into tagJoin
+            from tag in tagJoin.DefaultIfEmpty()
+            join room in db.Rooms.AsNoTracking() on slot.RoomId equals room.Id into roomJoin
+            from room in roomJoin.DefaultIfEmpty()
+            where
+                slot.ScheduleId == scheduleId
+                && dayNames.Contains(day.Name)
+                && activityTeacher.TeacherId == teacherId
+            orderby hour.Id, activity.Id
+            select new
+            {
+                SlotId = slot.Id,
+                slot.ScheduleId,
+                ActivityId = activity.Id,
+                HourName = hour.Name,
+                DayName = day.Name,
+                SubjectName = subject.Name,
+                TagName = tag != null ? tag.Name : null,
+                RoomName = room != null ? room.Name : null,
+                ActivityDuration = activity.Duration,
+                ActivityComments = activity.Comments,
+                SubjectExternalId = subject.ExternalSubjectId,
+            }
+        ).ToListAsync(ct);
+
+        var dedup = rawRows
+            .GroupBy(r => r.SlotId)
+            .Select(g => g.First())
+            .ToList();
+
+        var results = new List<TeacherScheduleSlotResult>(dedup.Count);
+        foreach (var r in dedup)
+        {
+            IReadOnlyList<FetActivityCommentRef> refs =
+                FetXmlParser.ParseCommentRefs(r.ActivityComments);
+
+            FetActivityCommentRef? match =
+                refs.FirstOrDefault(x =>
+                    x.SubjectExternalId.HasValue
+                    && r.SubjectExternalId.HasValue
+                    && x.SubjectExternalId == r.SubjectExternalId
+                ) ?? refs.FirstOrDefault();
+
+            results.Add(new TeacherScheduleSlotResult(
+                r.SlotId,
+                r.ScheduleId,
+                r.ActivityId,
+                r.HourName,
+                r.DayName,
+                r.SubjectName,
+                r.TagName,
+                r.RoomName,
+                r.ActivityDuration,
+                externalTeacherId,
+                match?.PlanMatterProviderExternalId,
+                match?.FacultyExternalId,
+                match?.MetaSpecializationExternalId,
+                match?.StudyYearNumber,
+                match?.Semester,
+                match?.PlataNB,
+                match?.OldActivityTag,
+                match?.GroupExternalId,
+                match?.GroupNames,
+                match?.SpecializationExternalId ?? -1,
+                match?.SubjectExternalId ?? r.SubjectExternalId
+            ));
+        }
 
         return results;
     }
@@ -215,5 +327,58 @@ public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
             .ThenByDescending(schedule => schedule.OddWeek)
             .ThenBy(schedule => schedule.Name)
             .ToListAsync(ct);
+    }
+
+    public async Task<int> BackfillActivityStudentsCommentRefsAsync(
+        CancellationToken ct = default
+    )
+    {
+        var activities = await db
+            .Activities.Where(a => a.Comments != null && a.Comments != "")
+            .Select(a => new { a.Id, a.Comments })
+            .ToListAsync(ct);
+
+        int updated = 0;
+        foreach (var activity in activities)
+        {
+            IReadOnlyList<FetActivityCommentRef> refs = FetXmlParser.ParseCommentRefs(
+                activity.Comments
+            );
+            if (refs.Count == 0)
+                continue;
+
+            List<ActivityStudents> studentRows = await db
+                .ActivityStudents.Where(s => s.ActivityId == activity.Id)
+                .ToListAsync(ct);
+
+            foreach (var row in studentRows)
+            {
+                FetActivityCommentRef? matched = refs.FirstOrDefault(r =>
+                    r.SubjectExternalId.HasValue
+                    && row.SubjectExternalId.HasValue
+                    && r.SubjectExternalId == row.SubjectExternalId
+                ) ?? refs[0];
+
+                row.Semester = matched.Semester ?? row.Semester;
+                row.PlataNB = matched.PlataNB ?? row.PlataNB;
+                row.OldActivityTag = matched.OldActivityTag ?? row.OldActivityTag;
+                row.GroupNames = matched.GroupNames ?? row.GroupNames;
+
+                if (
+                    string.IsNullOrEmpty(row.GroupExternalId)
+                    && !string.IsNullOrEmpty(matched.GroupExternalId)
+                )
+                {
+                    row.GroupExternalId = matched.GroupExternalId;
+                }
+
+                updated++;
+            }
+        }
+
+        if (updated > 0)
+            await db.SaveChangesAsync(ct);
+
+        return updated;
     }
 }

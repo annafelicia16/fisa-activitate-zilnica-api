@@ -19,4 +19,5 @@ public interface IDailyActivityRecordsQueryService
         DateTime? startDate,
         DateTime? endDate
     );
+    Task<IEnumerable<MonthlyActivitySummaryResponse>> GetMonthlySummariesAsync(int teacherId);
 }

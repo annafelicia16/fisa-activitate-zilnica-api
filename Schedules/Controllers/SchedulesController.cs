@@ -76,6 +76,24 @@ public class SchedulesController(
     }
 
     public override async Task<
+        ActionResult<IReadOnlyList<TeacherScheduleSlotResponse>>
+    > GetTeacherDaySlotsByDate(
+        [FromQuery] GetTeacherDaySlotsByDateRequest request,
+        CancellationToken ct = default
+    )
+    {
+        try
+        {
+            var slots = await schedulesQueryService.GetTeacherDaySlotsByDateAsync(request, ct);
+            return Ok(slots);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    public override async Task<
         ActionResult<IReadOnlyList<ScheduleResponse>>
     > GetSchedulesByExternalTeacherId(int externalTeacherId, CancellationToken ct = default)
     {
@@ -97,6 +115,14 @@ public class SchedulesController(
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    public override async Task<ActionResult<BackfillResponse>> BackfillActivityStudents(
+        CancellationToken ct = default
+    )
+    {
+        int updated = await schedulesQueryService.BackfillActivityStudentsCommentRefsAsync(ct);
+        return Ok(new BackfillResponse(updated));
     }
 
     private static bool HasFetExtension(IFormFile file)

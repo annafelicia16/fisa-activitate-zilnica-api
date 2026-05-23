@@ -8,6 +8,8 @@ using FisaActivitateZilnicaApi.DailyActivities.Services;
 using FisaActivitateZilnicaApi.DailyActivities.Services.Interfaces;
 using FisaActivitateZilnicaApi.Data.Master;
 using FisaActivitateZilnicaApi.Data.University;
+using FisaActivitateZilnicaApi.ExternalReferences.Repositories;
+using FisaActivitateZilnicaApi.ExternalReferences.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalTeachers.Repositories;
 using FisaActivitateZilnicaApi.ExternalTeachers.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalTeachers.Services;
@@ -16,6 +18,10 @@ using FisaActivitateZilnicaApi.Schedules.Repositories;
 using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.Services;
 using FisaActivitateZilnicaApi.Schedules.Services.Interfaces;
+using FisaActivitateZilnicaApi.SupplementaryActivities.Repositories;
+using FisaActivitateZilnicaApi.SupplementaryActivities.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.SupplementaryActivities.Services;
+using FisaActivitateZilnicaApi.SupplementaryActivities.Services.Interfaces;
 using FisaActivitateZilnicaApi.System;
 using FluentMigrator.Runner;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +59,7 @@ string[] requiredEnvVars =
     "MASTER_DB_PASSWORD",
     "API_PORT",
     "ENVIRONMENT",
+    "CLIENT_URL",
 ];
 
 Console.WriteLine("Checking environment variables...\n");
@@ -103,6 +110,11 @@ builder.Services.AddAutoMapper(typeof(MappingProfile));
 builder.Services.AddScoped<ISchedulesRepository, SchedulesRepository>();
 builder.Services.AddScoped<IDailyActivityRecordsRepository, DailyActivityRecordsRepository>();
 builder.Services.AddScoped<IExternalTeachersRepository, ExternalTeachersRepository>();
+builder.Services.AddScoped<IExternalReferencesRepository, ExternalReferencesRepository>();
+builder.Services.AddScoped<
+    ISupplementaryActivitiesRepository,
+    SupplementaryActivitiesRepository
+>();
 
 #endregion
 
@@ -115,6 +127,14 @@ builder.Services.AddScoped<IExternalTeachersQueryService, ExternalTeachersQueryS
 builder.Services.AddScoped<
     IDailyActivityRecordsCommandService,
     DailyActivityRecordsCommandService
+>();
+builder.Services.AddScoped<
+    ISupplementaryActivitiesQueryService,
+    SupplementaryActivitiesQueryService
+>();
+builder.Services.AddScoped<
+    ISupplementaryActivitiesCommandService,
+    SupplementaryActivitiesCommandService
 >();
 
 #endregion
@@ -132,14 +152,19 @@ builder.Services.AddScoped<
 builder.Services.AddLogging();
 builder.Services.AddHttpClient();
 
-// Add CORS
+// Add CORS for the configured client URL
+string clientUrl = Env.GetString("CLIENT_URL");
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
-        "AllowAll",
+        "Client",
         policy =>
         {
-            policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+            policy
+                .WithOrigins(clientUrl)
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .AllowCredentials();
         }
     );
 });
@@ -236,7 +261,7 @@ if (!string.Equals(environment, "production", StringComparison.OrdinalIgnoreCase
 }
 
 // Use CORS
-app.UseCors("AllowAll");
+app.UseCors("Client");
 
 app.MapControllers();
 

@@ -1,12 +1,31 @@
+using FisaActivitateZilnicaApi.ExternalReferences.Models;
+using FisaActivitateZilnicaApi.ExternalReferences.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.Schedules.DTOs.Payloads;
 using FisaActivitateZilnicaApi.Schedules.DTOs.Requests;
 using FisaActivitateZilnicaApi.Schedules.DTOs.Responses;
+using FisaActivitateZilnicaApi.Schedules.Models;
 using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.Services.Interfaces;
 
 namespace FisaActivitateZilnicaApi.Schedules.Services;
 
-public class SchedulesQueryService(ISchedulesRepository schedulesRepository) : ISchedulesQueryService
+public class SchedulesQueryService(
+    ISchedulesRepository schedulesRepository,
+    IExternalReferencesRepository externalReferencesRepository
+) : ISchedulesQueryService
 {
+    private static readonly IReadOnlyDictionary<DayOfWeek, string[]> DayNameAliases =
+        new Dictionary<DayOfWeek, string[]>
+        {
+            [DayOfWeek.Monday] = ["Luni", "Monday"],
+            [DayOfWeek.Tuesday] = ["Marți", "Marti", "Tuesday"],
+            [DayOfWeek.Wednesday] = ["Miercuri", "Wednesday"],
+            [DayOfWeek.Thursday] = ["Joi", "Thursday"],
+            [DayOfWeek.Friday] = ["Vineri", "Friday"],
+            [DayOfWeek.Saturday] = ["Sâmbătă", "Sambata", "Saturday"],
+            [DayOfWeek.Sunday] = ["Duminică", "Duminica", "Sunday"],
+        };
+
     public async Task<IReadOnlyList<TeacherScheduleSlotResponse>> GetTeacherDaySlotsAsync(
         GetTeacherScheduleSlotsRequest request,
         CancellationToken ct = default
@@ -22,24 +41,318 @@ public class SchedulesQueryService(ISchedulesRepository schedulesRepository) : I
             ct
         );
 
-        return results
-            .Select(x => new TeacherScheduleSlotResponse(
-                x.SlotId,
-                x.ScheduleId,
-                x.ActivityId,
-                x.HourName,
-                x.DayName,
-                x.SubjectName,
-                x.ExternalTeacherId,
-                x.PlanMatterProviderExternalId,
-                x.FacultyExternalId,
-                x.MetaSpecializationExternalId,
-                x.StudyYearNumber,
-                x.GroupExternalId,
-                x.SpecializationExternalId,
-                x.SubjectExternalId
-            ))
+        return results.Select(MapToResponse).ToList();
+    }
+
+    public async Task<IReadOnlyList<TeacherScheduleSlotResponse>> GetTeacherDaySlotsByDateAsync(
+        GetTeacherDaySlotsByDateRequest request,
+        CancellationToken ct = default
+    )
+    {
+        if (request.ExternalTeacherId <= 0)
+            throw new ArgumentException(
+                "Query parameter 'externalTeacherId' must be greater than 0."
+            );
+
+        if (request.Date == default)
+            throw new ArgumentException("Query parameter 'date' is required.");
+
+        DateTime date = request.Date.Date;
+
+        IReadOnlyList<Schedule> schedules =
+            await schedulesRepository.GetSchedulesByExternalTeacherIdAsync(
+                request.ExternalTeacherId,
+                ct
+            );
+
+        Schedule? matching = ResolveScheduleForDate(schedules, date);
+        if (matching == null)
+            return [];
+
+        string[] dayNames = DayNameAliases.TryGetValue(date.DayOfWeek, out var aliases)
+            ? aliases
+            : [];
+
+        if (dayNames.Length == 0)
+            return [];
+
+        int? internalTeacherId = await schedulesRepository.FindInternalTeacherIdAsync(
+            matching.Id,
+            request.ExternalTeacherId,
+            ct
+        );
+        if (internalTeacherId == null)
+            return [];
+
+        IReadOnlyList<TeacherScheduleSlotResult> rows =
+            await schedulesRepository.GetTeacherDaySlotsByInternalIdAsync(
+                matching.Id,
+                dayNames,
+                internalTeacherId.Value,
+                request.ExternalTeacherId,
+                ct
+            );
+
+        // Resolve university-DB friendly names (subject / faculty / specialization / group)
+        // in batched roundtrips, then overlay them onto each slot.
+        var subjectIds = rows.Where(r => r.SubjectExternalId is > 0)
+            .Select(r => r.SubjectExternalId!.Value)
+            .Distinct()
+            .ToArray();
+        var facultyIds = rows.Where(r => r.FacultyExternalId is > 0)
+            .Select(r => r.FacultyExternalId!.Value)
+            .Distinct()
+            .ToArray();
+        var groupIds = rows
+            .Select(r => TryParseFirstInt(r.GroupExternalId))
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+
+        // Await sequentially — DbContext is not safe for concurrent use within the same
+        // scope, so Task.WhenAll on multiple queries against UniversityDbContext throws
+        // InvalidOperationException ("A second operation was started on this context...").
+        Dictionary<int, ExternalSubject> subjects = (
+            await externalReferencesRepository.GetSubjectsByIdsAsync(subjectIds, ct)
+        ).ToDictionary(s => (int)s.IdMaterie);
+        Dictionary<int, ExternalFaculty> faculties = (
+            await externalReferencesRepository.GetFacultiesByIdsAsync(facultyIds, ct)
+        ).ToDictionary(f => (int)f.IdFacultate);
+        Dictionary<int, ExternalGroup> groups = (
+            await externalReferencesRepository.GetGroupsByIdsAsync(groupIds, ct)
+        ).ToDictionary(g => (int)g.IdGrupe);
+
+        // Third fallback: COURSES often have no id_grupe and a friendly grupa name like
+        // "IE3" meaning "all year-3 IE groups". The Specializare can be resolved by
+        // matching its DenumireScurtaSpecializare ("IE") and scoping to the slot's
+        // faculty via Grupe.
+        var shortNameFacultyPairs = rows
+            .Where(r =>
+                !(r.SpecializationExternalId > 0)
+                && TryParseFirstInt(r.GroupExternalId) <= 0
+                && r.FacultyExternalId is > 0
+            )
+            .Select(r => (Prefix: ExtractAlphaPrefix(r.GroupNames), FacultyId: r.FacultyExternalId!.Value))
+            .Where(p => !string.IsNullOrEmpty(p.Prefix))
+            .Distinct()
+            .ToArray();
+        var shortNames = shortNameFacultyPairs
+            .Select(p => p.Prefix!)
+            .Distinct()
+            .ToArray();
+        var fallbackFacultyIds = shortNameFacultyPairs
+            .Select(p => p.FacultyId)
+            .Distinct()
+            .ToArray();
+
+        var shortNameLookups =
+            await externalReferencesRepository.GetSpecializationsByShortNameAndFacultiesAsync(
+                shortNames,
+                fallbackFacultyIds,
+                ct
+            );
+        Dictionary<(string ShortName, int FacultyId), int> shortNameToSpecId =
+            shortNameLookups
+                .GroupBy(l => (
+                    ShortName: l.DenumireScurta!.ToUpperInvariant(),
+                    FacultyId: (int)l.FacultyId
+                ))
+                .ToDictionary(g => g.Key, g => (int)g.First().IdSpecializare);
+
+        // Effective specialization id per row: own id_specializare > group's id_specializare
+        // > short-name+faculty hint.
+        var specializationIds = new HashSet<int>();
+        foreach (var row in rows)
+        {
+            int effectiveSpec = ResolveEffectiveSpecializationId(
+                row,
+                groups,
+                shortNameToSpecId
+            );
+            if (effectiveSpec > 0)
+                specializationIds.Add(effectiveSpec);
+        }
+
+        Dictionary<int, ExternalSpecialization> specializations = (
+            await externalReferencesRepository.GetSpecializationsByIdsAsync(
+                specializationIds.ToArray(),
+                ct
+            )
+        ).ToDictionary(s => (int)s.IdSpecializare);
+
+        return rows
+            .Select(r =>
+                MapToResponse(r, subjects, faculties, specializations, groups, shortNameToSpecId)
+            )
             .ToList();
+    }
+
+    private static int ResolveEffectiveSpecializationId(
+        TeacherScheduleSlotResult row,
+        IReadOnlyDictionary<int, ExternalGroup> groups,
+        IReadOnlyDictionary<(string ShortName, int FacultyId), int>? shortNameToSpecId = null
+    )
+    {
+        if (row.SpecializationExternalId > 0)
+            return row.SpecializationExternalId;
+
+        int groupId = TryParseFirstInt(row.GroupExternalId);
+        if (
+            groupId > 0
+            && groups.TryGetValue(groupId, out var group)
+            && group.IdSpecializare is long specId
+            && specId > 0
+        )
+        {
+            return (int)specId;
+        }
+
+        if (shortNameToSpecId is not null && row.FacultyExternalId is int facId && facId > 0)
+        {
+            string? prefix = ExtractAlphaPrefix(row.GroupNames);
+            if (
+                !string.IsNullOrEmpty(prefix)
+                && shortNameToSpecId.TryGetValue((prefix, facId), out int hintedSpec)
+                && hintedSpec > 0
+            )
+            {
+                return hintedSpec;
+            }
+        }
+
+        return 0;
+    }
+
+    // Group external id arrives as "30638" or — after our bracket strip — sometimes
+    // "30638,30639". Take the first numeric token.
+    private static int TryParseFirstInt(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return 0;
+        var first = value.Split(',', ' ', ';', '/')[0].Trim();
+        return int.TryParse(first, out var parsed) ? parsed : 0;
+    }
+
+    // Pulls the leading alpha prefix from a friendly group code like "IE3" → "IE",
+    // "MNG4" → "MNG". Returns null when the value starts with digits (a real group
+    // code such as "13LF731", which we never need to fall back through).
+    private static string? ExtractAlphaPrefix(string? grupa)
+    {
+        if (string.IsNullOrWhiteSpace(grupa))
+            return null;
+        var first = grupa.Split(',', ' ', ';', '/')[0].Trim();
+        int i = 0;
+        while (i < first.Length && char.IsLetter(first[i]))
+            i++;
+        if (i == 0)
+            return null;
+        return first[..i].ToUpperInvariant();
+    }
+
+    // Picks the schedule whose semester contains the given date and whose OddWeek
+    // flag matches the parity of that date's week relative to the semester start.
+    // Convention: week 1 of the semester (weeks-from-start == 0) is the odd week.
+    private static Schedule? ResolveScheduleForDate(
+        IReadOnlyList<Schedule> schedules,
+        DateTime date
+    )
+    {
+        Schedule? candidate = schedules.FirstOrDefault(s =>
+            s.ScheduleSemester != null
+            && s.ScheduleSemester.StartDate.Date <= date
+            && date <= s.ScheduleSemester.EndDate.Date
+        );
+
+        if (candidate == null)
+            return null;
+
+        ScheduleSemester semester = candidate.ScheduleSemester;
+        int daysFromStart = (date - semester.StartDate.Date).Days;
+        int weeksFromStart = daysFromStart / 7;
+        bool isOddWeek = weeksFromStart % 2 == 0;
+
+        return schedules.FirstOrDefault(s =>
+            s.ScheduleSemesterId == semester.Id && s.OddWeek == isOddWeek
+        ) ?? candidate;
+    }
+
+    public Task<int> BackfillActivityStudentsCommentRefsAsync(CancellationToken ct = default) =>
+        schedulesRepository.BackfillActivityStudentsCommentRefsAsync(ct);
+
+    private static TeacherScheduleSlotResponse MapToResponse(TeacherScheduleSlotResult x) =>
+        MapToResponse(x, null, null, null, null, null);
+
+    private static TeacherScheduleSlotResponse MapToResponse(
+        TeacherScheduleSlotResult x,
+        IReadOnlyDictionary<int, ExternalSubject>? subjects,
+        IReadOnlyDictionary<int, ExternalFaculty>? faculties,
+        IReadOnlyDictionary<int, ExternalSpecialization>? specializations,
+        IReadOnlyDictionary<int, ExternalGroup>? groups,
+        IReadOnlyDictionary<(string ShortName, int FacultyId), int>? shortNameToSpecId
+    )
+    {
+        string? materieName = null;
+        string? materieShortName = null;
+        if (
+            subjects is not null
+            && x.SubjectExternalId is int subjectId
+            && subjects.TryGetValue(subjectId, out var subject)
+        )
+        {
+            materieName = subject.Denumire;
+            materieShortName = subject.DenumireScurta;
+        }
+
+        string? facultateName = null;
+        if (
+            faculties is not null
+            && x.FacultyExternalId is int facultyId
+            && faculties.TryGetValue(facultyId, out var faculty)
+        )
+        {
+            facultateName = faculty.Denumire;
+        }
+
+        string? specializareName = null;
+        int effectiveSpecId = groups is null
+            ? (x.SpecializationExternalId > 0 ? x.SpecializationExternalId : 0)
+            : ResolveEffectiveSpecializationId(x, groups, shortNameToSpecId);
+        if (
+            specializations is not null
+            && effectiveSpecId > 0
+            && specializations.TryGetValue(effectiveSpecId, out var specialization)
+        )
+        {
+            specializareName = specialization.Denumire;
+        }
+
+        return new TeacherScheduleSlotResponse(
+            x.SlotId,
+            x.ScheduleId,
+            x.ActivityId,
+            x.HourName,
+            x.DayName,
+            x.SubjectName,
+            x.CourseTypeTag,
+            x.RoomName,
+            x.Duration,
+            x.ExternalTeacherId,
+            x.PlanMatterProviderExternalId,
+            x.FacultyExternalId,
+            x.MetaSpecializationExternalId,
+            x.StudyYearNumber,
+            x.Semester,
+            x.PlataNB,
+            x.OldActivityTag,
+            x.GroupExternalId,
+            x.GroupNames,
+            x.SpecializationExternalId,
+            x.SubjectExternalId,
+            materieName,
+            materieShortName,
+            facultateName,
+            specializareName
+        );
     }
 
     public async Task<IReadOnlyList<ScheduleResponse>> GetSchedulesByExternalTeacherIdAsync(

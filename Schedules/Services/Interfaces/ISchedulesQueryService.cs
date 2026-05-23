@@ -9,8 +9,13 @@ public interface ISchedulesQueryService
         GetTeacherScheduleSlotsRequest request,
         CancellationToken ct = default
     );
+    Task<IReadOnlyList<TeacherScheduleSlotResponse>> GetTeacherDaySlotsByDateAsync(
+        GetTeacherDaySlotsByDateRequest request,
+        CancellationToken ct = default
+    );
     Task<IReadOnlyList<ScheduleResponse>> GetSchedulesByExternalTeacherIdAsync(
         int externalTeacherId,
         CancellationToken ct = default
     );
+    Task<int> BackfillActivityStudentsCommentRefsAsync(CancellationToken ct = default);
 }

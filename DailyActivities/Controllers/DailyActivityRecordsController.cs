@@ -71,9 +71,6 @@ public class DailyActivityRecordsController(
                     endDate
                 );
 
-            if (!dailyActivityRecords.Any())
-                return NotFound("No daily activity records found.");
-
             return Ok(dailyActivityRecords);
         }
         catch (ArgumentException ex)
@@ -139,6 +136,23 @@ public class DailyActivityRecordsController(
         catch (KeyNotFoundException ex)
         {
             return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<
+        ActionResult<IEnumerable<MonthlyActivitySummaryResponse>>
+    > GetMonthlyActivitySummary(int teacherId)
+    {
+        try
+        {
+            IEnumerable<MonthlyActivitySummaryResponse> summaries =
+                await _dailyActivityRecordsQueryService.GetMonthlySummariesAsync(teacherId);
+
+            return Ok(summaries);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
         }
     }
 }

@@ -1,5 +1,6 @@
 using FisaActivitateZilnicaApi.DailyActivities.Models;
 using FisaActivitateZilnicaApi.Schedules.Models;
+using FisaActivitateZilnicaApi.SupplementaryActivities.Models;
 using Microsoft.EntityFrameworkCore;
 using SubjectModel = FisaActivitateZilnicaApi.Schedules.Models.Subject;
 
@@ -25,6 +26,7 @@ public class MasterDbContext(DbContextOptions<MasterDbContext> options) : DbCont
     public DbSet<Subgroup> Subgroups => Set<Subgroup>();
     public DbSet<ActivitySlot> ActivitySlots => Set<ActivitySlot>();
     public DbSet<DailyActivityRecord> DailyActivityRecords => Set<DailyActivityRecord>();
+    public DbSet<SupplementaryActivity> SupplementaryActivities => Set<SupplementaryActivity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -85,6 +85,35 @@ public class DailyActivityRecordsRepository(MasterDbContext masterDbContext, IMa
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<MonthlyActivitySummaryResponse>> GetMonthlySummaries(
+        int externalTeacherId
+    )
+    {
+        var rows = await _masterDbContext
+            .DailyActivityRecords.AsNoTracking()
+            .IgnoreAutoIncludes()
+            .Where(dar => dar.ExternalTeacherId == externalTeacherId)
+            .GroupBy(dar => new { dar.StartDate.Year, dar.StartDate.Month })
+            .Select(g => new
+            {
+                g.Key.Year,
+                g.Key.Month,
+                RecordCount = g.Count(),
+                TotalConventionalHours = g.Sum(x => x.ConventionalHours),
+            })
+            .OrderByDescending(x => x.Year)
+            .ThenByDescending(x => x.Month)
+            .ToListAsync();
+
+        return rows.Select(r => new MonthlyActivitySummaryResponse(
+            r.Year,
+            r.Month,
+            r.RecordCount,
+            r.TotalConventionalHours,
+            MonthlySheetStatus.Draft
+        ));
+    }
+
     public async Task<GetDailyActivityRecordResponse> CreateDailyActivityRecord(
         CreateDailyActivityRecordRequest request
     )

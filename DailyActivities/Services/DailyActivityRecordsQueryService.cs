@@ -57,6 +57,16 @@ public class DailyActivityRecordsQueryService(
         );
     }
 
+    public async Task<IEnumerable<MonthlyActivitySummaryResponse>> GetMonthlySummariesAsync(
+        int teacherId
+    )
+    {
+        if (teacherId <= 0)
+            throw new ArgumentException("Query parameter 'teacherId' must be greater than 0.");
+
+        return await _dailyActivityRecordsRepository.GetMonthlySummaries(teacherId);
+    }
+
     private static void ValidateQueryRequest(
         int teacherId,
         int? year,

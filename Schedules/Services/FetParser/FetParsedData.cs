@@ -16,9 +16,13 @@ public sealed class FetParsedData
     public required IReadOnlyList<FetActivity> Activities { get; init; }
     /// <summary>Timetable from ConstraintActivityPreferredStartingTime: FET Activity_Id -> (Day, Hour).</summary>
     public required IReadOnlyList<FetActivitySlot> ActivitySlots { get; init; }
+    /// <summary>Room binding from ConstraintActivityPreferredRoom: FET Activity_Id -> Room name.</summary>
+    public required IReadOnlyList<FetActivityRoom> ActivityRooms { get; init; }
 }
 
 public sealed record FetActivitySlot(int FetActivityId, string DayName, string HourName);
+
+public sealed record FetActivityRoom(int FetActivityId, string RoomName);
 
 public sealed record FetDay(string Name);
 
@@ -76,8 +80,12 @@ public sealed record FetActivityCommentRef(
     int? FacultyExternalId,
     int? MetaSpecializationExternalId,
     int? StudyYearNumber,
+    int? Semester,
+    int? PlataNB,
+    string? OldActivityTag,
     string? ActivityTag,
     string? GroupExternalId,
+    string? GroupNames,
     int? SpecializationExternalId,
     int? SubjectExternalId
 );

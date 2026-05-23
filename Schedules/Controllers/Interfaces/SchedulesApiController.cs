@@ -30,6 +30,19 @@ public abstract class SchedulesApiController : ControllerBase
         CancellationToken ct = default
     );
 
+    [HttpGet("teacher-day-slots-by-date")]
+    [ProducesResponseType(
+        statusCode: 200,
+        type: typeof(IReadOnlyList<TeacherScheduleSlotResponse>)
+    )]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    public abstract Task<
+        ActionResult<IReadOnlyList<TeacherScheduleSlotResponse>>
+    > GetTeacherDaySlotsByDate(
+        [FromQuery] GetTeacherDaySlotsByDateRequest request,
+        CancellationToken ct = default
+    );
+
     [HttpGet("by-external-teacher/{externalTeacherId}")]
     [ProducesResponseType(statusCode: 200, type: typeof(IReadOnlyList<ScheduleResponse>))]
     [ProducesResponseType(statusCode: 400, type: typeof(string))]
@@ -38,4 +51,12 @@ public abstract class SchedulesApiController : ControllerBase
         [FromRoute] int externalTeacherId,
         CancellationToken ct = default
     );
+
+    [HttpPost("backfill-activity-students")]
+    [ProducesResponseType(statusCode: 200, type: typeof(BackfillResponse))]
+    public abstract Task<ActionResult<BackfillResponse>> BackfillActivityStudents(
+        CancellationToken ct = default
+    );
 }
+
+public sealed record BackfillResponse(int UpdatedRows);

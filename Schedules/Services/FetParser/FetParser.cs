@@ -23,6 +23,7 @@ public static class FetXmlParser
         var rooms = ParseRooms(root);
         var activities = ParseActivities(root);
         var activitySlots = ParseActivitySlots(root);
+        var activityRooms = ParseActivityRooms(root);
 
         // Ensure all subjects, teachers, and activity tags referenced by activities exist
         var subjectNames = subjects.Select(s => s.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -68,7 +69,30 @@ public static class FetXmlParser
             Rooms = rooms,
             Activities = activities,
             ActivitySlots = activitySlots,
+            ActivityRooms = activityRooms,
         };
+    }
+
+    private static IReadOnlyList<FetActivityRoom> ParseActivityRooms(XElement root)
+    {
+        // Rooms are bound to activities through Space_Constraints_List:
+        //   <ConstraintActivityPreferredRoom>
+        //     <Activity_Id>1</Activity_Id>
+        //     <Room>LIII1</Room>
+        //   </ConstraintActivityPreferredRoom>
+        var list = root.Element("Space_Constraints_List");
+        if (list == null)
+            return [];
+
+        return list.Elements("ConstraintActivityPreferredRoom")
+            .Select(c =>
+            {
+                var id = ParseInt(GetElementValue(c, "Activity_Id"), -1);
+                var room = GetElementValue(c, "Room") ?? "";
+                return new FetActivityRoom(id, room);
+            })
+            .Where(r => r.FetActivityId >= 0 && !string.IsNullOrEmpty(r.RoomName))
+            .ToList();
     }
 
     private static IReadOnlyList<FetActivitySlot> ParseActivitySlots(XElement root)
@@ -265,7 +289,7 @@ public static class FetXmlParser
             .ToList();
     }
 
-    private static IReadOnlyList<FetActivityCommentRef> ParseCommentRefs(string? comments)
+    public static IReadOnlyList<FetActivityCommentRef> ParseCommentRefs(string? comments)
     {
         if (string.IsNullOrWhiteSpace(comments))
             return [];
@@ -304,17 +328,71 @@ public static class FetXmlParser
         if (element.ValueKind != JsonValueKind.Object)
             return null;
 
+        string? groupExternalId =
+            TryGetString(element, "id_grupe") ?? TryGetString(element, "id_grupa");
+
+        // Some files store id_grupe as a stringified array like "[30638]" or "[30638,30639]".
+        // Peel the outer brackets so downstream code gets a clean id (or comma-joined ids).
+        if (
+            groupExternalId is not null
+            && groupExternalId.Length >= 2
+            && groupExternalId.StartsWith('[')
+            && groupExternalId.EndsWith(']')
+        )
+        {
+            groupExternalId = groupExternalId.Substring(1, groupExternalId.Length - 2).Trim();
+            if (groupExternalId.Length == 0)
+                groupExternalId = null;
+        }
+
         return new FetActivityCommentRef(
             TryGetInt(element, "id_profesor"),
             TryGetInt(element, "id_planmaterie_prestator"),
             TryGetInt(element, "id_facultate"),
             TryGetInt(element, "id_metaspecializare"),
             TryGetInt(element, "nranstudii"),
+            TryGetInt(element, "nrsemestrudinan"),
+            TryGetInt(element, "plataNB"),
+            TryGetString(element, "oldactivitytag"),
             TryGetString(element, "activity_tag"),
-            TryGetString(element, "id_grupa"),
+            groupExternalId,
+            TryGetStringArrayCsv(element, "grupa"),
             TryGetInt(element, "id_specializare"),
             TryGetInt(element, "id_materie")
         );
+    }
+
+    private static string? TryGetStringArrayCsv(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+            return null;
+
+        if (property.ValueKind == JsonValueKind.String)
+        {
+            string? str = property.GetString();
+            return string.IsNullOrWhiteSpace(str) ? null : str;
+        }
+
+        if (property.ValueKind == JsonValueKind.Array)
+        {
+            var parts = new List<string>();
+            foreach (var item in property.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    string? s = item.GetString();
+                    if (!string.IsNullOrWhiteSpace(s))
+                        parts.Add(s);
+                }
+                else if (item.ValueKind == JsonValueKind.Number)
+                {
+                    parts.Add(item.GetRawText());
+                }
+            }
+            return parts.Count == 0 ? null : string.Join(",", parts);
+        }
+
+        return null;
     }
 
     private static int? TryGetInt(JsonElement element, string propertyName)
