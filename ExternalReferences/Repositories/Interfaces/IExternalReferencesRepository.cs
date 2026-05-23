@@ -25,4 +25,10 @@ public interface IExternalReferencesRepository
         IReadOnlyCollection<int> facultyIds,
         CancellationToken ct = default
     );
+
+    Task<ExternalDepartment?> GetActiveDepartmentForTeacherAsync(
+        long externalTeacherId,
+        DateTime today,
+        CancellationToken ct = default
+    );
 }

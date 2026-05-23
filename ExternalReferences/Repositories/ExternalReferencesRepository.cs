@@ -63,6 +63,26 @@ public class ExternalReferencesRepository(UniversityDbContext db) : IExternalRef
             .ToListAsync(ct);
     }
 
+    public async Task<ExternalDepartment?> GetActiveDepartmentForTeacherAsync(
+        long externalTeacherId,
+        DateTime today,
+        CancellationToken ct = default
+    )
+    {
+        DateTime day = today.Date;
+        return await (
+            from dp in db.ExternalDepartmentTeachers.AsNoTracking()
+            join d in db.ExternalDepartments.AsNoTracking()
+                on dp.IdDepartament equals d.IdDepartament
+            where
+                dp.IdProfesor == externalTeacherId
+                && dp.Activ == true
+                && (dp.DataPanaCand == null || dp.DataPanaCand >= day)
+            orderby dp.DataDeCand descending
+            select d
+        ).FirstOrDefaultAsync(ct);
+    }
+
     public async Task<
         IReadOnlyList<SpecializationByFacultyLookup>
     > GetSpecializationsByShortNameAndFacultiesAsync(

@@ -68,5 +68,18 @@ public interface ISchedulesRepository
         int externalTeacherId,
         CancellationToken ct = default
     );
+    Task<IReadOnlyList<int>> GetTeacherFacultyExternalIdsAsync(
+        int externalTeacherId,
+        CancellationToken ct = default
+    );
+    Task<ScheduleSemester?> GetActiveScheduleSemesterAsync(
+        DateTime date,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyDictionary<(int ScheduleId, string DayName), int>> GetTeacherSlotCountsByDayNameAsync(
+        int externalTeacherId,
+        IReadOnlyCollection<int> scheduleIds,
+        CancellationToken ct = default
+    );
     Task<int> BackfillActivityStudentsCommentRefsAsync(CancellationToken ct = default);
 }

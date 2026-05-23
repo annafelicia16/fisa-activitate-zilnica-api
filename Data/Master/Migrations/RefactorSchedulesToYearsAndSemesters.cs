@@ -48,35 +48,36 @@ public class RefactorSchedulesToYearsAndSemesters : Migration
 
         Execute.Sql(
             """
-            INSERT INTO ScheduleYears (`Value`)
-            SELECT DISTINCT s.`Year`
+            INSERT INTO ScheduleYears ([Value])
+            SELECT DISTINCT s.[Year]
             FROM Schedules s
-            LEFT JOIN ScheduleYears sy ON sy.`Value` = s.`Year`
-            WHERE sy.`Id` IS NULL;
+            LEFT JOIN ScheduleYears sy ON sy.[Value] = s.[Year]
+            WHERE sy.Id IS NULL;
             """
         );
 
         Execute.Sql(
             """
-            INSERT INTO ScheduleSemesters (`ScheduleYearId`, `Number`, `StartDate`, `EndDate`)
-            SELECT DISTINCT sy.`Id`, s.`Semester`, '2000-01-01', '2000-01-01'
+            INSERT INTO ScheduleSemesters (ScheduleYearId, [Number], StartDate, EndDate)
+            SELECT DISTINCT sy.Id, s.Semester, '2000-01-01', '2000-01-01'
             FROM Schedules s
-            INNER JOIN ScheduleYears sy ON sy.`Value` = s.`Year`
+            INNER JOIN ScheduleYears sy ON sy.[Value] = s.[Year]
             LEFT JOIN ScheduleSemesters ss
-                ON ss.`ScheduleYearId` = sy.`Id`
-                AND ss.`Number` = s.`Semester`
-            WHERE ss.`Id` IS NULL;
+                ON ss.ScheduleYearId = sy.Id
+                AND ss.[Number] = s.Semester
+            WHERE ss.Id IS NULL;
             """
         );
 
         Execute.Sql(
             """
-            UPDATE Schedules s
-            INNER JOIN ScheduleYears sy ON sy.`Value` = s.`Year`
+            UPDATE s
+            SET s.ScheduleSemesterId = ss.Id
+            FROM Schedules s
+            INNER JOIN ScheduleYears sy ON sy.[Value] = s.[Year]
             INNER JOIN ScheduleSemesters ss
-                ON ss.`ScheduleYearId` = sy.`Id`
-                AND ss.`Number` = s.`Semester`
-            SET s.`ScheduleSemesterId` = ss.`Id`;
+                ON ss.ScheduleYearId = sy.Id
+                AND ss.[Number] = s.Semester;
             """
         );
 
@@ -106,12 +107,13 @@ public class RefactorSchedulesToYearsAndSemesters : Migration
 
         Execute.Sql(
             """
-            UPDATE Schedules s
-            INNER JOIN ScheduleSemesters ss ON ss.`Id` = s.`ScheduleSemesterId`
-            INNER JOIN ScheduleYears sy ON sy.`Id` = ss.`ScheduleYearId`
+            UPDATE s
             SET
-                s.`Year` = sy.`Value`,
-                s.`Semester` = ss.`Number`;
+                s.[Year] = sy.[Value],
+                s.Semester = ss.[Number]
+            FROM Schedules s
+            INNER JOIN ScheduleSemesters ss ON ss.Id = s.ScheduleSemesterId
+            INNER JOIN ScheduleYears sy ON sy.Id = ss.ScheduleYearId;
             """
         );
 

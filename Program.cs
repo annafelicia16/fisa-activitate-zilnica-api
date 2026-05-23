@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json.Serialization;
 using DotNetEnv;
+using Microsoft.Data.SqlClient;
 using FisaActivitateZilnicaApi.DailyActivities.Repositories;
 using FisaActivitateZilnicaApi.DailyActivities.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.DailyActivities.Services;
@@ -215,14 +216,15 @@ builder.Services.AddDbContext<UniversityDbContext>(options =>
 );
 
 string masterConnectionString =
-    $"Server={Env.GetString("MASTER_DB_HOST")};"
-    + $"Port={Env.GetString("MASTER_DB_PORT")};"
+    $"Server={Env.GetString("MASTER_DB_HOST")},{Env.GetString("MASTER_DB_PORT")};"
     + $"Database={Env.GetString("MASTER_DB_DATABASE")};"
-    + $"Uid={Env.GetString("MASTER_DB_USERNAME")};"
-    + $"Pwd={Env.GetString("MASTER_DB_PASSWORD")};";
+    + $"User Id={Env.GetString("MASTER_DB_USERNAME")};"
+    + $"Password={Env.GetString("MASTER_DB_PASSWORD")};"
+    + "Encrypt=True;"
+    + "TrustServerCertificate=True;";
 
 builder.Services.AddDbContext<MasterDbContext>(options =>
-    options.UseMySql(masterConnectionString, ServerVersion.AutoDetect(masterConnectionString))
+    options.UseSqlServer(masterConnectionString)
 );
 
 #endregion
@@ -232,7 +234,7 @@ builder.Services.AddDbContext<MasterDbContext>(options =>
 builder
     .Services.AddFluentMigratorCore()
     .ConfigureRunner(rb =>
-        rb.AddMySql8()
+        rb.AddSqlServer()
             .WithGlobalConnectionString(masterConnectionString)
             .ScanIn(typeof(Program).Assembly)
             .For.Migrations()
@@ -265,6 +267,9 @@ app.UseCors("Client");
 
 app.MapControllers();
 
+await WaitForDatabaseAsync(masterConnectionString, TimeSpan.FromMinutes(2));
+await EnsureDatabaseExistsAsync(masterConnectionString);
+
 using (IServiceScope scope = app.Services.CreateScope())
 {
     IMigrationRunner runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
@@ -272,3 +277,85 @@ using (IServiceScope scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+static async Task EnsureDatabaseExistsAsync(string connectionString)
+{
+    var target = new SqlConnectionStringBuilder(connectionString);
+    string targetDatabase = target.InitialCatalog;
+    if (string.IsNullOrWhiteSpace(targetDatabase))
+    {
+        return;
+    }
+
+    var masterBuilder = new SqlConnectionStringBuilder(connectionString)
+    {
+        InitialCatalog = "master",
+    };
+
+    await using var connection = new SqlConnection(masterBuilder.ConnectionString);
+    await connection.OpenAsync();
+
+    await using var checkCommand = connection.CreateCommand();
+    checkCommand.CommandText = "SELECT 1 FROM sys.databases WHERE name = @name";
+    checkCommand.Parameters.Add(new SqlParameter("@name", targetDatabase));
+    object? exists = await checkCommand.ExecuteScalarAsync();
+    if (exists != null)
+    {
+        return;
+    }
+
+    string escaped = targetDatabase.Replace("]", "]]");
+    await using var createCommand = connection.CreateCommand();
+    createCommand.CommandText = $"CREATE DATABASE [{escaped}]";
+    await createCommand.ExecuteNonQueryAsync();
+    Console.ForegroundColor = ConsoleColor.Green;
+    Console.WriteLine($"✅ Created database '{targetDatabase}'.");
+    Console.ResetColor();
+}
+
+static async Task WaitForDatabaseAsync(string connectionString, TimeSpan timeout)
+{
+    var builder = new SqlConnectionStringBuilder(connectionString)
+    {
+        ConnectTimeout = 3,
+        InitialCatalog = "master",
+    };
+    string probeConnectionString = builder.ConnectionString;
+
+    DateTime deadline = DateTime.UtcNow + timeout;
+    int attempt = 0;
+    Console.WriteLine("Waiting for SQL Server to accept connections...");
+
+    while (true)
+    {
+        attempt++;
+        try
+        {
+            await using var connection = new SqlConnection(probeConnectionString);
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1";
+            await command.ExecuteScalarAsync();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"✅ SQL Server is ready (attempt {attempt}).");
+            Console.ResetColor();
+            return;
+        }
+        catch (Exception ex)
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine(
+                    $"❌ SQL Server did not become ready within {timeout.TotalSeconds:F0}s."
+                );
+                Console.ResetColor();
+                throw;
+            }
+            Console.WriteLine(
+                $"  attempt {attempt}: not ready yet ({ex.GetType().Name}: {ex.Message.Split('\n')[0]}). Retrying in 2s..."
+            );
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+    }
+}

@@ -329,6 +329,83 @@ public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<int>> GetTeacherFacultyExternalIdsAsync(
+        int externalTeacherId,
+        CancellationToken ct = default
+    )
+    {
+        // A teacher's faculties = distinct FacultyExternalId across every ActivityStudents
+        // row attached to an Activity they teach (in any schedule).
+        return await (
+            from teacher in db.Teachers.AsNoTracking()
+            join activityTeacher in db.ActivityTeachers.AsNoTracking()
+                on teacher.Id equals activityTeacher.TeacherId
+            join activityStudents in db.ActivityStudents.AsNoTracking()
+                on activityTeacher.ActivityId equals activityStudents.ActivityId
+            where
+                teacher.ExternalTeacherId == externalTeacherId
+                && activityStudents.FacultyExternalId.HasValue
+                && activityStudents.FacultyExternalId > 0
+            select activityStudents.FacultyExternalId!.Value
+        )
+            .Distinct()
+            .ToListAsync(ct);
+    }
+
+    public Task<ScheduleSemester?> GetActiveScheduleSemesterAsync(
+        DateTime date,
+        CancellationToken ct = default
+    )
+    {
+        DateTime day = date.Date;
+        return db
+            .ScheduleSemesters.AsNoTracking()
+            .Include(s => s.ScheduleYear)
+            .Where(s => s.StartDate <= day && day <= s.EndDate)
+            .OrderByDescending(s => s.ScheduleYear.Value)
+            .ThenByDescending(s => s.Number)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<
+        IReadOnlyDictionary<(int ScheduleId, string DayName), int>
+    > GetTeacherSlotCountsByDayNameAsync(
+        int externalTeacherId,
+        IReadOnlyCollection<int> scheduleIds,
+        CancellationToken ct = default
+    )
+    {
+        if (scheduleIds.Count == 0)
+            return new Dictionary<(int, string), int>();
+
+        // Distinct on slot.Id because ActivityTeachers is many-to-many: a slot's
+        // activity may have multiple teachers and we'd otherwise double-count.
+        var rows = await (
+            from slot in db.ActivitySlots.AsNoTracking()
+            join activity in db.Activities.AsNoTracking() on slot.ActivityId equals activity.Id
+            join activityTeacher in db.ActivityTeachers.AsNoTracking()
+                on activity.Id equals activityTeacher.ActivityId
+            join teacher in db.Teachers.AsNoTracking()
+                on activityTeacher.TeacherId equals teacher.Id
+            join day in db.Days.AsNoTracking() on slot.DayId equals day.Id
+            where
+                teacher.ExternalTeacherId == externalTeacherId
+                && scheduleIds.Contains(slot.ScheduleId)
+            select new
+            {
+                slot.ScheduleId,
+                DayName = day.Name,
+                SlotId = slot.Id,
+            }
+        )
+            .Distinct()
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(r => (r.ScheduleId, r.DayName))
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
     public async Task<int> BackfillActivityStudentsCommentRefsAsync(
         CancellationToken ct = default
     )

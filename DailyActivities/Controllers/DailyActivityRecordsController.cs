@@ -155,4 +155,28 @@ public class DailyActivityRecordsController(
             return BadRequest(ex.Message);
         }
     }
+
+    public override async Task<ActionResult<IReadOnlyList<DayStatusResponse>>> GetDailyStatuses(
+        int teacherId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken ct = default
+    )
+    {
+        try
+        {
+            IReadOnlyList<DayStatusResponse> statuses =
+                await _dailyActivityRecordsQueryService.GetDailyStatusesAsync(
+                    teacherId,
+                    startDate,
+                    endDate,
+                    ct
+                );
+            return Ok(statuses);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
 }

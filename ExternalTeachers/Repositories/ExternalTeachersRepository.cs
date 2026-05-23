@@ -19,4 +19,14 @@ public class ExternalTeachersRepository(UniversityDbContext universityDbContext)
             .ExternalTeachers.AsNoTracking()
             .FirstOrDefaultAsync(teacher => teacher.Email == email, ct);
     }
+
+    public async Task<ExternalTeacher?> GetExternalTeacherByIdAsync(
+        long idProfesor,
+        CancellationToken ct = default
+    )
+    {
+        return await _universityDbContext
+            .ExternalTeachers.AsNoTracking()
+            .FirstOrDefaultAsync(teacher => teacher.IdProfesor == idProfesor, ct);
+    }
 }

@@ -1,3 +1,5 @@
+using FisaActivitateZilnicaApi.DailyActivities.DTOs.Responses;
+using FisaActivitateZilnicaApi.DailyActivities.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalReferences.Models;
 using FisaActivitateZilnicaApi.ExternalReferences.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.DTOs.Payloads;
@@ -11,7 +13,8 @@ namespace FisaActivitateZilnicaApi.Schedules.Services;
 
 public class SchedulesQueryService(
     ISchedulesRepository schedulesRepository,
-    IExternalReferencesRepository externalReferencesRepository
+    IExternalReferencesRepository externalReferencesRepository,
+    IDailyActivityRecordsRepository dailyActivityRecordsRepository
 ) : ISchedulesQueryService
 {
     private static readonly IReadOnlyDictionary<DayOfWeek, string[]> DayNameAliases =
@@ -180,11 +183,37 @@ public class SchedulesQueryService(
             )
         ).ToDictionary(s => (int)s.IdSpecializare);
 
-        return rows
+        var responses = rows
             .Select(r =>
                 MapToResponse(r, subjects, faculties, specializations, groups, shortNameToSpecId)
             )
             .ToList();
+
+        // Drop slots that already have a daily-activity-record pointing at them.
+        // Match is by slot identity (ActivitySlotId FK) — set by the client when
+        // the user fills the form from a scheduled slot. Records without a slot
+        // FK (legacy / ad-hoc entries) are ignored here and the slot stays.
+        IEnumerable<GetDailyActivityRecordResponse> dayRecords =
+            await dailyActivityRecordsRepository.QueryDailyActivityRecords(
+                request.ExternalTeacherId,
+                departmentName: null,
+                year: null,
+                groupName: null,
+                subgroupName: null,
+                subjectName: null,
+                roomName: null,
+                revenueType: null,
+                activityType: null,
+                startDate: date,
+                endDate: date.AddDays(1)
+            );
+
+        HashSet<int> recordedSlotIds = dayRecords
+            .Where(r => r.ActivitySlotId.HasValue)
+            .Select(r => r.ActivitySlotId!.Value)
+            .ToHashSet();
+
+        return responses.Where(slot => !recordedSlotIds.Contains(slot.SlotId)).ToList();
     }
 
     private static int ResolveEffectiveSpecializationId(

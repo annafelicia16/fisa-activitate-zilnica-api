@@ -1,4 +1,5 @@
 using FisaActivitateZilnicaApi.ExternalTeachers.Controllers.Interfaces;
+using FisaActivitateZilnicaApi.ExternalTeachers.DTOs.Responses;
 using FisaActivitateZilnicaApi.ExternalTeachers.Models;
 using FisaActivitateZilnicaApi.ExternalTeachers.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -22,6 +23,28 @@ public class ExternalTeachersController(IExternalTeachersQueryService externalTe
                 await _externalTeachersQueryService.GetExternalTeacherByEmailAsync(email, ct);
 
             return Ok(externalTeacher);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<ActionResult<TeacherProfileResponse>> GetTeacherProfile(
+        int externalTeacherId,
+        CancellationToken ct = default
+    )
+    {
+        try
+        {
+            TeacherProfileResponse profile =
+                await _externalTeachersQueryService.GetTeacherProfileAsync(externalTeacherId, ct);
+
+            return Ok(profile);
         }
         catch (ArgumentException ex)
         {

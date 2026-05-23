@@ -8,4 +8,9 @@ public interface IExternalTeachersRepository
         string email,
         CancellationToken ct = default
     );
+
+    Task<ExternalTeacher?> GetExternalTeacherByIdAsync(
+        long idProfesor,
+        CancellationToken ct = default
+    );
 }

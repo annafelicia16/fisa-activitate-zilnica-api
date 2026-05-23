@@ -72,4 +72,14 @@ public abstract class DailyActivityRecordsApiController : ControllerBase
     public abstract Task<
         ActionResult<IEnumerable<MonthlyActivitySummaryResponse>>
     > GetMonthlyActivitySummary([FromQuery] int teacherId);
+
+    [HttpGet("day-statuses")]
+    [ProducesResponseType(statusCode: 200, type: typeof(IReadOnlyList<DayStatusResponse>))]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    public abstract Task<ActionResult<IReadOnlyList<DayStatusResponse>>> GetDailyStatuses(
+        [FromQuery] int teacherId,
+        [FromQuery] DateTime startDate,
+        [FromQuery] DateTime endDate,
+        CancellationToken ct = default
+    );
 }

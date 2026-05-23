@@ -20,4 +20,11 @@ public interface IDailyActivityRecordsQueryService
         DateTime? endDate
     );
     Task<IEnumerable<MonthlyActivitySummaryResponse>> GetMonthlySummariesAsync(int teacherId);
+
+    Task<IReadOnlyList<DayStatusResponse>> GetDailyStatusesAsync(
+        int teacherId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken ct = default
+    );
 }

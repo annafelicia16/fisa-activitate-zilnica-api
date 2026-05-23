@@ -20,4 +20,5 @@ public class CreateDailyActivityRecordRequest
     public string? Observations { get; set; }
     public required DateTime StartDate { get; set; }
     public required DateTime EndDate { get; set; }
+    public int? ActivitySlotId { get; set; }
 }

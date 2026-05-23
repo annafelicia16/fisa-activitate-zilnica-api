@@ -70,4 +70,10 @@ public class DailyActivityRecord
     [Required]
     [Column("EndDate")]
     public DateTime EndDate { get; set; }
+
+    // FK to ActivitySlot. Nullable so ad-hoc activity (not tied to a scheduled
+    // slot) can still be recorded. When set, identifies exactly which scheduled
+    // slot this record satisfies — used to filter the scheduled-today list.
+    [Column("ActivitySlotId")]
+    public int? ActivitySlotId { get; set; }
 }

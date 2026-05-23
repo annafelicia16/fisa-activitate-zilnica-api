@@ -1,15 +1,20 @@
+using FisaActivitateZilnicaApi.ExternalReferences.Models;
+using FisaActivitateZilnicaApi.ExternalReferences.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.ExternalTeachers.DTOs.Responses;
 using FisaActivitateZilnicaApi.ExternalTeachers.Models;
 using FisaActivitateZilnicaApi.ExternalTeachers.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalTeachers.Services.Interfaces;
+using FisaActivitateZilnicaApi.Schedules.Models;
+using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
 
 namespace FisaActivitateZilnicaApi.ExternalTeachers.Services;
 
-public class ExternalTeachersQueryService(IExternalTeachersRepository externalTeachersRepository)
-    : IExternalTeachersQueryService
+public class ExternalTeachersQueryService(
+    IExternalTeachersRepository externalTeachersRepository,
+    ISchedulesRepository schedulesRepository,
+    IExternalReferencesRepository externalReferencesRepository
+) : IExternalTeachersQueryService
 {
-    private readonly IExternalTeachersRepository _externalTeachersRepository =
-        externalTeachersRepository;
-
     public async Task<ExternalTeacher> GetExternalTeacherByEmailAsync(
         string email,
         CancellationToken ct = default
@@ -21,11 +26,91 @@ public class ExternalTeachersQueryService(IExternalTeachersRepository externalTe
         string normalizedEmail = email.Trim();
 
         ExternalTeacher externalTeacher =
-            await _externalTeachersRepository.GetExternalTeacherByEmailAsync(normalizedEmail, ct)
+            await externalTeachersRepository.GetExternalTeacherByEmailAsync(normalizedEmail, ct)
             ?? throw new KeyNotFoundException(
                 $"External teacher with email '{normalizedEmail}' was not found."
             );
 
         return externalTeacher;
+    }
+
+    public async Task<TeacherProfileResponse> GetTeacherProfileAsync(
+        int externalTeacherId,
+        CancellationToken ct = default
+    )
+    {
+        if (externalTeacherId <= 0)
+            throw new ArgumentException(
+                "Route parameter 'externalTeacherId' must be greater than 0."
+            );
+
+        ExternalTeacher teacher =
+            await externalTeachersRepository.GetExternalTeacherByIdAsync(externalTeacherId, ct)
+            ?? throw new KeyNotFoundException(
+                $"External teacher with id '{externalTeacherId}' was not found."
+            );
+
+        DateTime now = DateTime.UtcNow;
+
+        // Sequentially awaited: faculties + department live on UniversityDbContext,
+        // schedule data on MasterDbContext. EF Core forbids concurrent ops on the same
+        // context and the call cost is dominated by the WAN hop, not the queries.
+        IReadOnlyList<int> facultyIds =
+            await schedulesRepository.GetTeacherFacultyExternalIdsAsync(externalTeacherId, ct);
+
+        IReadOnlyList<TeacherFacultyResponse> faculties = [];
+        if (facultyIds.Count > 0)
+        {
+            var rows = await externalReferencesRepository.GetFacultiesByIdsAsync(facultyIds, ct);
+            faculties = rows
+                .Select(f => new TeacherFacultyResponse(
+                    (int)f.IdFacultate,
+                    f.DenumireScurta ?? f.Denumire,
+                    f.DenumireScurta
+                ))
+                .OrderBy(f => f.Name, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        ExternalDepartment? department =
+            await externalReferencesRepository.GetActiveDepartmentForTeacherAsync(
+                externalTeacherId,
+                now,
+                ct
+            );
+        TeacherDepartmentResponse? departmentResponse = department is null
+            ? null
+            : new TeacherDepartmentResponse(
+                department.IdDepartament,
+                department.Denumire,
+                department.DenumireScurta
+            );
+
+        ScheduleSemester? activeSemester =
+            await schedulesRepository.GetActiveScheduleSemesterAsync(now, ct);
+
+        return new TeacherProfileResponse(
+            teacher.IdProfesor,
+            teacher.Nume,
+            teacher.Prenume,
+            teacher.Email,
+            teacher.Cnp,
+            departmentResponse,
+            faculties,
+            faculties.FirstOrDefault(),
+            CurrentAcademicYear(now),
+            activeSemester?.Number,
+            activeSemester?.StartDate,
+            activeSemester?.EndDate
+        );
+    }
+
+    // Romanian academic year is calendar-driven: the cycle "Y-(Y+1)" starts in August
+    // and runs through July of the next year. Past Aug 1 → "thisYear-nextYear",
+    // otherwise (Jan–Jul) → "prevYear-thisYear".
+    private static string CurrentAcademicYear(DateTime today)
+    {
+        int year = today.Year;
+        return today.Month >= 8 ? $"{year}-{year + 1}" : $"{year - 1}-{year}";
     }
 }

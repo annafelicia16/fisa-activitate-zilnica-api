@@ -12,6 +12,9 @@ public class UniversityDbContext(DbContextOptions<UniversityDbContext> options) 
     public DbSet<ExternalSpecialization> ExternalSpecializations =>
         Set<ExternalSpecialization>();
     public DbSet<ExternalGroup> ExternalGroups => Set<ExternalGroup>();
+    public DbSet<ExternalDepartment> ExternalDepartments => Set<ExternalDepartment>();
+    public DbSet<ExternalDepartmentTeacher> ExternalDepartmentTeachers =>
+        Set<ExternalDepartmentTeacher>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,5 +23,9 @@ public class UniversityDbContext(DbContextOptions<UniversityDbContext> options) 
         modelBuilder.Entity<ExternalFaculty>().ToTable("Facultate", "dbo");
         modelBuilder.Entity<ExternalSpecialization>().ToTable("Specializare", "dbo");
         modelBuilder.Entity<ExternalGroup>().ToTable("Grupe", "dbo");
+        modelBuilder.Entity<ExternalDepartment>().ToTable("Departament", "dbo");
+        modelBuilder
+            .Entity<ExternalDepartmentTeacher>()
+            .ToTable("DepartamentProfesor", "dbo");
     }
 }

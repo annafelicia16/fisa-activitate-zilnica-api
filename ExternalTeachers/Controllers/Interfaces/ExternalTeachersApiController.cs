@@ -1,3 +1,4 @@
+using FisaActivitateZilnicaApi.ExternalTeachers.DTOs.Responses;
 using FisaActivitateZilnicaApi.ExternalTeachers.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,6 +14,15 @@ public abstract class ExternalTeachersApiController : ControllerBase
     [ProducesResponseType(statusCode: 404, type: typeof(string))]
     public abstract Task<ActionResult<ExternalTeacher>> GetExternalTeacherByEmail(
         [FromRoute] string email,
+        CancellationToken ct = default
+    );
+
+    [HttpGet("{externalTeacherId:int}/profile")]
+    [ProducesResponseType(statusCode: 200, type: typeof(TeacherProfileResponse))]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    [ProducesResponseType(statusCode: 404, type: typeof(string))]
+    public abstract Task<ActionResult<TeacherProfileResponse>> GetTeacherProfile(
+        [FromRoute] int externalTeacherId,
         CancellationToken ct = default
     );
 }
