@@ -8,6 +8,10 @@ public interface IDailyActivityRecordsCommandService
     Task<GetDailyActivityRecordResponse> CreateDailyActivityRecordAsync(
         CreateDailyActivityRecordRequest request
     );
+    Task<AutoFillDailyActivityRecordsResponse> AutoFillDailyActivityRecordsAsync(
+        AutoFillDailyActivityRecordsRequest request,
+        CancellationToken ct = default
+    );
     Task<GetDailyActivityRecordResponse> UpdateDailyActivityRecordAsync(
         UpdateDailyActivityRecordRequest request
     );

@@ -47,6 +47,16 @@ public abstract class DailyActivityRecordsApiController : ControllerBase
         [FromBody] CreateDailyActivityRecordRequest request
     );
 
+    [HttpPost("auto-fill")]
+    [ProducesResponseType(statusCode: 200, type: typeof(AutoFillDailyActivityRecordsResponse))]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    public abstract Task<
+        ActionResult<AutoFillDailyActivityRecordsResponse>
+    > AutoFillDailyActivityRecords(
+        [FromBody] AutoFillDailyActivityRecordsRequest request,
+        CancellationToken ct = default
+    );
+
     [HttpPut("update")]
     [ProducesResponseType(statusCode: 202, type: typeof(GetDailyActivityRecordResponse))]
     [ProducesResponseType(statusCode: 400, type: typeof(string))]

@@ -98,6 +98,29 @@ public class DailyActivityRecordsController(
     }
 
     public override async Task<
+        ActionResult<AutoFillDailyActivityRecordsResponse>
+    > AutoFillDailyActivityRecords(
+        AutoFillDailyActivityRecordsRequest request,
+        CancellationToken ct = default
+    )
+    {
+        try
+        {
+            AutoFillDailyActivityRecordsResponse result =
+                await _dailyActivityRecordsCommandService.AutoFillDailyActivityRecordsAsync(
+                    request,
+                    ct
+                );
+
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    public override async Task<
         ActionResult<GetDailyActivityRecordResponse>
     > UpdateDailyActivityRecord(UpdateDailyActivityRecordRequest request)
     {

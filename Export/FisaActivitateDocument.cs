@@ -152,8 +152,8 @@ internal static class FisaActivitateDocument
                 cols.RelativeColumn(1.4f); // Grupa
                 cols.RelativeColumn(1.2f); // Sala
                 cols.RelativeColumn(0.9f); // Ore Efective
-                cols.RelativeColumn(1.3f); // Ore Convenționale NB/PO
-                cols.RelativeColumn(0.9f); // Norma
+                cols.RelativeColumn(1.0f); // Ore Convenționale
+                cols.RelativeColumn(0.9f); // Norma (NB/PO)
                 cols.RelativeColumn(1.6f); // Semnătura
             });
 
@@ -172,7 +172,7 @@ internal static class FisaActivitateDocument
                 header.Cell().RowSpan(2).Element(HeaderCell).Text("Semnătura");
 
                 header.Cell().Element(HeaderCell).Text("Efective");
-                header.Cell().Element(HeaderCell).Text("Convenționale NB/PO");
+                header.Cell().Element(HeaderCell).Text("Convenționale");
 
                 for (int i = 1; i <= 12; i++)
                 {
@@ -198,7 +198,6 @@ internal static class FisaActivitateDocument
                         $"{r.StartDate:HH:mm}-{r.EndDate:HH:mm}";
                     double effectiveHours = (r.EndDate - r.StartDate).TotalHours;
                     string revenueTag = r.RevenueType == RevenueType.BaseSalary ? "NB" : "PO";
-                    string convCell = $"{r.ConventionalHours.ToString("0.00", Inv)} {revenueTag}";
 
                     table.Cell().Element(BodyCell).Text(ziua);
                     table.Cell().Element(BodyCell).Text(ora);
@@ -209,8 +208,8 @@ internal static class FisaActivitateDocument
                     table.Cell().Element(BodyCell).Text(r.GroupName);
                     table.Cell().Element(BodyCell).Text(r.RoomName);
                     table.Cell().Element(BodyCell).Text(effectiveHours.ToString("0.00", Inv));
-                    table.Cell().Element(BodyCell).Text(convCell);
-                    table.Cell().Element(BodyCell).Text(string.Empty);
+                    table.Cell().Element(BodyCell).Text(r.ConventionalHours.ToString("0.00", Inv));
+                    table.Cell().Element(BodyCell).Text(revenueTag);
                     table.Cell().Element(BodyCell).Text(string.Empty);
                 }
             }
