@@ -58,6 +58,12 @@ public abstract class SchedulesApiController : ControllerBase
         CancellationToken ct = default
     );
 
+    [HttpPost("backfill-activity-students-agsis-names")]
+    [ProducesResponseType(statusCode: 200, type: typeof(BackfillResponse))]
+    public abstract Task<ActionResult<BackfillResponse>> BackfillActivityStudentsAgsisNames(
+        CancellationToken ct = default
+    );
+
     [HttpGet("")]
     [ProducesResponseType(statusCode: 200, type: typeof(IReadOnlyList<ScheduleResponse>))]
     public abstract Task<ActionResult<IReadOnlyList<ScheduleResponse>>> GetAllSchedules(

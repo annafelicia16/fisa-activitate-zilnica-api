@@ -15,6 +15,10 @@ using FisaActivitateZilnicaApi.ExternalTeachers.Repositories;
 using FisaActivitateZilnicaApi.ExternalTeachers.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalTeachers.Services;
 using FisaActivitateZilnicaApi.ExternalTeachers.Services.Interfaces;
+using FisaActivitateZilnicaApi.ScheduleCatalog.Repositories;
+using FisaActivitateZilnicaApi.ScheduleCatalog.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.ScheduleCatalog.Services;
+using FisaActivitateZilnicaApi.ScheduleCatalog.Services.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.Repositories;
 using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.Services;
@@ -121,6 +125,7 @@ builder.Services.AddAutoMapper(typeof(MappingProfile));
 #region Repositories
 
 builder.Services.AddScoped<ISchedulesRepository, SchedulesRepository>();
+builder.Services.AddScoped<IScheduleCatalogRepository, ScheduleCatalogRepository>();
 builder.Services.AddScoped<IDailyActivityRecordsRepository, DailyActivityRecordsRepository>();
 builder.Services.AddScoped<IExternalTeachersRepository, ExternalTeachersRepository>();
 builder.Services.AddScoped<IExternalReferencesRepository, ExternalReferencesRepository>();
@@ -135,6 +140,7 @@ builder.Services.AddScoped<
 
 builder.Services.AddScoped<IFetImportService, FetImportService>();
 builder.Services.AddScoped<ISchedulesQueryService, SchedulesQueryService>();
+builder.Services.AddScoped<IScheduleCatalogQueryService, ScheduleCatalogQueryService>();
 builder.Services.AddScoped<IDailyActivityRecordsQueryService, DailyActivityRecordsQueryService>();
 builder.Services.AddScoped<IExternalTeachersQueryService, ExternalTeachersQueryService>();
 builder.Services.AddScoped<

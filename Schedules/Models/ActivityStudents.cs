@@ -50,5 +50,24 @@ public class ActivityStudents
     [Column("SubjectExternalId")]
     public int? SubjectExternalId { get; set; }
 
+    // AGSIS friendly names cached at import / backfill so the schedule-catalog
+    // cascade reads them locally. EffectiveSpecializationExternalId is the
+    // resolved specialization id (own > group's > shortname hint) used as the
+    // stable cascade filter key when SpecializationExternalId is null.
+    [Column("FacultyName")]
+    public string? FacultyName { get; set; }
+
+    [Column("SpecializationName")]
+    public string? SpecializationName { get; set; }
+
+    [Column("SubjectName")]
+    public string? SubjectName { get; set; }
+
+    [Column("ResolvedGroupName")]
+    public string? ResolvedGroupName { get; set; }
+
+    [Column("EffectiveSpecializationExternalId")]
+    public int? EffectiveSpecializationExternalId { get; set; }
+
     public virtual required Activity Activity { get; set; }
 }

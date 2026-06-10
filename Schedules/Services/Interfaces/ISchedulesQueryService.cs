@@ -19,4 +19,5 @@ public interface ISchedulesQueryService
     );
     Task<IReadOnlyList<ScheduleResponse>> GetAllSchedulesAsync(CancellationToken ct = default);
     Task<int> BackfillActivityStudentsCommentRefsAsync(CancellationToken ct = default);
+    Task<int> BackfillActivityStudentsAgsisNamesAsync(CancellationToken ct = default);
 }

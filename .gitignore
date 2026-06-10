@@ -10,6 +10,3 @@
 
 .nuget/
 cloud/
-
-/Dockerfile
-/docker-compose.yml

@@ -1,0 +1,49 @@
+flowchart TD
+    A["Client Web (React)"]
+
+    subgraph api[" "]
+        B["Stratul API (Controllers)"]
+        subgraph services[" "]
+            C["DailyActivity Query Services<br/>(Citire date)"]
+            D["DailyActivity Command Services<br/>(Scriere/Modificare)"]
+        end
+        E["Stratul de Acces la Date<br/>(Repository Pattern)"]
+        subgraph ef[" "]
+            F["MasterDbContext<br/>(SQL Server)"]
+            G["UniversityDbContext<br/>(SQL Server)"]
+        end
+    end
+
+    subgraph data[" "]
+        H[("SQL Server<br/>Master DB")]
+        I[("SQL Server<br/>University DB - AGSIS")]
+    end
+
+    A -->|"Cereri HTTP REST"| B
+    B --> C
+    B --> D
+    C --> E
+    D --> E
+    E --> F
+    E --> G
+    F --> H
+    G --> I
+
+    classDef blue fill:#4472C4,stroke:#2F528F,color:#fff;
+    classDef purple fill:#7158A8,stroke:#4A3A70,color:#fff;
+    classDef green fill:#2E9D78,stroke:#1F6E54,color:#fff;
+    classDef orange fill:#E8A33D,stroke:#B97D1E,color:#fff;
+    classDef red fill:#C0504D,stroke:#8C3A38,color:#fff;
+    classDef db fill:#44546A,stroke:#2C3645,color:#fff;
+
+    class A blue;
+    class B purple;
+    class C,D green;
+    class E orange;
+    class F,G red;
+    class H,I db;
+
+    style api fill:#ECECF7,stroke:#C9C9E8
+    style services fill:#ECECF7,stroke:#C9C9E8
+    style ef fill:#ECECF7,stroke:#C9C9E8
+    style data fill:#ECECF7,stroke:#C9C9E8

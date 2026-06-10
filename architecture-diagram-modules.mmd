@@ -1,0 +1,63 @@
+flowchart TB
+    %% ================= Aplicație API =================
+    subgraph API["Aplicație API (ASP.NET Core)"]
+        direction TB
+
+        subgraph SYS["System"]
+            sys["MappingProfile (AutoMapper)<br/>mapping, configurare<br/>transversală"]
+        end
+
+        subgraph MOD["Module funcționale"]
+            direction TB
+
+            DA["<b>DailyActivities</b><br/>Fișe activitate zilnică<br/><i>+ fișă lunară: status<br/>(Draft → Submitted → Approved)<br/>+ sumar ore convenționale<br/>+ auto-completare din orar</i>"]
+
+            SCH["<b>Schedules</b><br/>Orar (import .fet, activități, săli)<br/><i>+ SpecializationResolver:<br/>specializare efectivă<br/>(citire + import)</i>"]
+
+            CAT["<b>ScheduleCatalog</b><br/>Navigare catalog orar pe cadru<br/><i>(facultăți → specializări →<br/>ani → grupe), read-only</i>"]
+
+            ET["<b>ExternalTeachers</b><br/>Cadre din sistemul<br/>universitar (AGSIS)"]
+
+            REF["<b>ExternalReferences</b><br/>Date de referință AGSIS<br/><i>(facultăți, specializări, grupe,<br/>discipline, departamente)</i>"]
+
+            SUP["<b>SupplementaryActivities</b><br/>Activități suplimentare<br/><i>(legate de cadru prin<br/>ExternalTeacherId)</i>"]
+
+            EXP["<b>Export</b><br/>Generare PDF fișă<br/><i>(QuestPDF)</i>"]
+        end
+    end
+
+    %% ================= Persistență =================
+    subgraph PERS["Persistență"]
+        direction LR
+        UNI[("<b>Data.University</b><br/>SQL Server — AGSIS<br/>cadre + date de referință")]
+        MAS[("<b>Data.Master</b><br/>SQL Server — orar + fișe<br/>+ suplimentare + catalog<br/><i>(FluentMigrator)</i>")]
+    end
+
+    %% ================= Relații între module =================
+    sys -- "DTO-uri / mapări" --> DA
+    sys -- "DTO-uri / mapări" --> SUP
+
+    DA <-- "corelare orar ↔ fișe<br/>+ auto-completare" --> SCH
+    SCH -- "rezolvare specializări /<br/>discipline / grupe" --> REF
+    CAT -- "navighează structura<br/>orarului cadrului" --> SCH
+    ET -- "îmbogățire profil<br/>din referințe" --> REF
+    SUP -- "ExternalTeacherId" --> ET
+    EXP -- "agregare fișe + suplimentare<br/>+ profil cadru → PDF" --> DA
+    EXP --> SUP
+    EXP --> ET
+
+    %% ================= Relații cu persistența =================
+    DA --> MAS
+    SCH --> MAS
+    CAT --> MAS
+    SUP --> MAS
+    ET --> UNI
+    REF --> UNI
+
+    %% ================= Stiluri =================
+    classDef module fill:#eef2ff,stroke:#5b6dd6,color:#1f2a63;
+    classDef newmod fill:#e9fbef,stroke:#2f9e57,color:#14512c;
+    classDef db fill:#eef2ff,stroke:#5b6dd6,color:#1f2a63;
+    class DA,SCH,ET,SUP,sys module;
+    class CAT,REF,EXP newmod;
+    class UNI,MAS db;

@@ -83,4 +83,8 @@ public interface ISchedulesRepository
         CancellationToken ct = default
     );
     Task<int> BackfillActivityStudentsCommentRefsAsync(CancellationToken ct = default);
+    Task<List<ActivityStudents>> GetActivityStudentsForBackfillAsync(
+        CancellationToken ct = default
+    );
+    Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

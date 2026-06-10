@@ -1,4 +1,6 @@
 using System.Collections.Frozen;
+using FisaActivitateZilnicaApi.ExternalReferences.Models;
+using FisaActivitateZilnicaApi.ExternalReferences.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.DTOs.Payloads;
 using FisaActivitateZilnicaApi.Schedules.Models;
 using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
@@ -7,7 +9,10 @@ using FisaActivitateZilnicaApi.Schedules.Services.Interfaces;
 
 namespace FisaActivitateZilnicaApi.Schedules.Services;
 
-public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportService
+public class FetImportService(
+    ISchedulesRepository schedulesRepo,
+    IExternalReferencesRepository externalReferencesRepository
+) : IFetImportService
 {
     public async Task<FetImportResult> ImportAsync(
         Stream oddWeekFetStream,
@@ -335,6 +340,97 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
             }
         }
 
+        // Resolve AGSIS friendly names once for the whole file (sequential — the
+        // University DbContext can't run concurrent queries), then stamp them onto
+        // each ActivityStudents row below. Mirrors the batching in
+        // SchedulesQueryService.GetTeacherDaySlotsByDateAsync.
+        List<FetActivityCommentRef> allCommentRefs = data
+            .Activities.SelectMany(activity => activity.CommentRefs)
+            .ToList();
+
+        int[] subjectExternalIds = allCommentRefs
+            .Where(r => r.SubjectExternalId is > 0)
+            .Select(r => r.SubjectExternalId!.Value)
+            .Distinct()
+            .ToArray();
+        int[] facultyExternalIds = allCommentRefs
+            .Where(r => r.FacultyExternalId is > 0)
+            .Select(r => r.FacultyExternalId!.Value)
+            .Distinct()
+            .ToArray();
+        int[] groupExternalIds = allCommentRefs
+            .Select(r => SpecializationResolver.TryParseFirstInt(r.GroupExternalId))
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+
+        Dictionary<int, ExternalSubject> subjectsById = (
+            await externalReferencesRepository.GetSubjectsByIdsAsync(subjectExternalIds, ct)
+        ).ToDictionary(s => (int)s.IdMaterie);
+        Dictionary<int, ExternalFaculty> facultiesById = (
+            await externalReferencesRepository.GetFacultiesByIdsAsync(facultyExternalIds, ct)
+        ).ToDictionary(f => (int)f.IdFacultate);
+        Dictionary<int, ExternalGroup> groupsById = (
+            await externalReferencesRepository.GetGroupsByIdsAsync(groupExternalIds, ct)
+        ).ToDictionary(g => (int)g.IdGrupe);
+
+        // Short-name + faculty hint for rows lacking both an own specialization and a
+        // resolvable group id (e.g. course rows tagged "IE3").
+        var shortNameFacultyPairs = allCommentRefs
+            .Where(r =>
+                !(r.SpecializationExternalId is > 0)
+                && SpecializationResolver.TryParseFirstInt(r.GroupExternalId) <= 0
+                && r.FacultyExternalId is > 0
+            )
+            .Select(r =>
+                (
+                    Prefix: SpecializationResolver.ExtractAlphaPrefix(r.GroupNames),
+                    FacultyId: r.FacultyExternalId!.Value
+                )
+            )
+            .Where(p => !string.IsNullOrEmpty(p.Prefix))
+            .Distinct()
+            .ToArray();
+        string[] shortNames = shortNameFacultyPairs.Select(p => p.Prefix!).Distinct().ToArray();
+        int[] shortNameFacultyIds = shortNameFacultyPairs
+            .Select(p => p.FacultyId)
+            .Distinct()
+            .ToArray();
+
+        Dictionary<(string ShortName, int FacultyId), int> shortNameToSpecId = (
+            await externalReferencesRepository.GetSpecializationsByShortNameAndFacultiesAsync(
+                shortNames,
+                shortNameFacultyIds,
+                ct
+            )
+        )
+            .GroupBy(l => (
+                ShortName: l.DenumireScurta!.ToUpperInvariant(),
+                FacultyId: (int)l.FacultyId
+            ))
+            .ToDictionary(g => g.Key, g => (int)g.First().IdSpecializare);
+
+        int[] effectiveSpecExternalIds = allCommentRefs
+            .Select(r =>
+                SpecializationResolver.ResolveEffectiveSpecializationId(
+                    r.SpecializationExternalId is > 0 ? r.SpecializationExternalId : null,
+                    r.GroupExternalId,
+                    r.FacultyExternalId,
+                    r.GroupNames,
+                    groupsById,
+                    shortNameToSpecId
+                )
+            )
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        Dictionary<int, ExternalSpecialization> specializationsById = (
+            await externalReferencesRepository.GetSpecializationsByIdsAsync(
+                effectiveSpecExternalIds,
+                ct
+            )
+        ).ToDictionary(s => (int)s.IdSpecializare);
+
         Dictionary<int, Activity> fetIdToActivity = [];
         foreach (var activityData in data.Activities)
         {
@@ -434,6 +530,18 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
                     if (string.IsNullOrWhiteSpace(studentsName))
                         continue;
 
+                    int effectiveSpecId = SpecializationResolver.ResolveEffectiveSpecializationId(
+                        specializationExternalId,
+                        commentRef.GroupExternalId,
+                        commentRef.FacultyExternalId,
+                        commentRef.GroupNames,
+                        groupsById,
+                        shortNameToSpecId
+                    );
+                    int firstGroupId = SpecializationResolver.TryParseFirstInt(
+                        commentRef.GroupExternalId
+                    );
+
                     await schedulesRepo.AddActivityStudentsAsync(
                         new ActivityStudents
                         {
@@ -451,6 +559,34 @@ public class FetImportService(ISchedulesRepository schedulesRepo) : IFetImportSe
                             GroupNames = commentRef.GroupNames,
                             SpecializationExternalId = specializationExternalId,
                             SubjectExternalId = commentRef.SubjectExternalId,
+                            FacultyName =
+                                commentRef.FacultyExternalId is int facId
+                                && facultiesById.TryGetValue(facId, out ExternalFaculty? faculty)
+                                    ? faculty.Denumire
+                                    : null,
+                            SpecializationName =
+                                effectiveSpecId > 0
+                                && specializationsById.TryGetValue(
+                                    effectiveSpecId,
+                                    out ExternalSpecialization? specialization
+                                )
+                                    ? specialization.Denumire
+                                    : null,
+                            SubjectName =
+                                commentRef.SubjectExternalId is int subjId
+                                && subjectsById.TryGetValue(
+                                    subjId,
+                                    out ExternalSubject? agsisSubject
+                                )
+                                    ? agsisSubject.Denumire
+                                    : null,
+                            ResolvedGroupName =
+                                firstGroupId > 0
+                                && groupsById.TryGetValue(firstGroupId, out ExternalGroup? group)
+                                    ? group.Nume
+                                    : commentRef.GroupNames,
+                            EffectiveSpecializationExternalId =
+                                effectiveSpecId > 0 ? effectiveSpecId : null,
                             Activity = activity,
                         },
                         ct

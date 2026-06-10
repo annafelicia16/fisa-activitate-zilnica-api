@@ -125,6 +125,14 @@ public class SchedulesController(
         return Ok(new BackfillResponse(updated));
     }
 
+    public override async Task<ActionResult<BackfillResponse>> BackfillActivityStudentsAgsisNames(
+        CancellationToken ct = default
+    )
+    {
+        int updated = await schedulesQueryService.BackfillActivityStudentsAgsisNamesAsync(ct);
+        return Ok(new BackfillResponse(updated));
+    }
+
     public override async Task<ActionResult<IReadOnlyList<ScheduleResponse>>> GetAllSchedules(
         CancellationToken ct = default
     )

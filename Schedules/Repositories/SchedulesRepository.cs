@@ -471,4 +471,12 @@ public class SchedulesRepository(MasterDbContext db) : ISchedulesRepository
 
         return updated;
     }
+
+    // Tracked (no AsNoTracking) so the caller can mutate the rows and persist via
+    // SaveChangesAsync. Only rows with a faculty id participate in the catalog.
+    public Task<List<ActivityStudents>> GetActivityStudentsForBackfillAsync(
+        CancellationToken ct = default
+    ) => db.ActivityStudents.Where(s => s.FacultyExternalId != null).ToListAsync(ct);
+
+    public Task<int> SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

@@ -215,67 +215,28 @@ public class SchedulesQueryService(
         return responses.Where(slot => !recordedSlotIds.Contains(slot.SlotId)).ToList();
     }
 
+    // Resolution lives in the shared SpecializationResolver so the read path and the
+    // import-time caching agree. These remain thin wrappers to keep the existing call
+    // sites (which pass a TeacherScheduleSlotResult) unchanged.
     private static int ResolveEffectiveSpecializationId(
         TeacherScheduleSlotResult row,
         IReadOnlyDictionary<int, ExternalGroup> groups,
         IReadOnlyDictionary<(string ShortName, int FacultyId), int>? shortNameToSpecId = null
-    )
-    {
-        if (row.SpecializationExternalId > 0)
-            return row.SpecializationExternalId;
+    ) =>
+        SpecializationResolver.ResolveEffectiveSpecializationId(
+            row.SpecializationExternalId,
+            row.GroupExternalId,
+            row.FacultyExternalId,
+            row.GroupNames,
+            groups,
+            shortNameToSpecId
+        );
 
-        int groupId = TryParseFirstInt(row.GroupExternalId);
-        if (
-            groupId > 0
-            && groups.TryGetValue(groupId, out var group)
-            && group.IdSpecializare is long specId
-            && specId > 0
-        )
-        {
-            return (int)specId;
-        }
+    private static int TryParseFirstInt(string? value) =>
+        SpecializationResolver.TryParseFirstInt(value);
 
-        if (shortNameToSpecId is not null && row.FacultyExternalId is int facId && facId > 0)
-        {
-            string? prefix = ExtractAlphaPrefix(row.GroupNames);
-            if (
-                !string.IsNullOrEmpty(prefix)
-                && shortNameToSpecId.TryGetValue((prefix, facId), out int hintedSpec)
-                && hintedSpec > 0
-            )
-            {
-                return hintedSpec;
-            }
-        }
-
-        return 0;
-    }
-
-    // Group external id arrives as "30638" or — after our bracket strip — sometimes
-    // "30638,30639". Take the first numeric token.
-    private static int TryParseFirstInt(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return 0;
-        var first = value.Split(',', ' ', ';', '/')[0].Trim();
-        return int.TryParse(first, out var parsed) ? parsed : 0;
-    }
-
-    // Pulls the leading alpha prefix from a friendly group code like "IE3" → "IE",
-    // "MNG4" → "MNG". Returns null when the value starts with digits (a real group
-    // code such as "13LF731", which we never need to fall back through).
-    private static string? ExtractAlphaPrefix(string? grupa)
-    {
-        if (string.IsNullOrWhiteSpace(grupa))
-            return null;
-        var first = grupa.Split(',', ' ', ';', '/')[0].Trim();
-        int i = 0;
-        while (i < first.Length && char.IsLetter(first[i]))
-            i++;
-        if (i == 0)
-            return null;
-        return first[..i].ToUpperInvariant();
-    }
+    private static string? ExtractAlphaPrefix(string? grupa) =>
+        SpecializationResolver.ExtractAlphaPrefix(grupa);
 
     // Picks the schedule whose semester contains the given date and whose OddWeek
     // flag matches the parity of that date's week relative to the semester start.
@@ -306,6 +267,133 @@ public class SchedulesQueryService(
 
     public Task<int> BackfillActivityStudentsCommentRefsAsync(CancellationToken ct = default) =>
         schedulesRepository.BackfillActivityStudentsCommentRefsAsync(ct);
+
+    // Re-resolves and caches the AGSIS friendly names (faculty/specialization/subject/
+    // group) + the effective specialization id onto existing ActivityStudents rows,
+    // for schedules imported before name-caching existed. Same batched resolution as
+    // FetImportService; idempotent (re-running recomputes the same values).
+    public async Task<int> BackfillActivityStudentsAgsisNamesAsync(CancellationToken ct = default)
+    {
+        List<ActivityStudents> rows =
+            await schedulesRepository.GetActivityStudentsForBackfillAsync(ct);
+        if (rows.Count == 0)
+            return 0;
+
+        int[] subjectIds = rows.Where(r => r.SubjectExternalId is > 0)
+            .Select(r => r.SubjectExternalId!.Value)
+            .Distinct()
+            .ToArray();
+        int[] facultyIds = rows.Where(r => r.FacultyExternalId is > 0)
+            .Select(r => r.FacultyExternalId!.Value)
+            .Distinct()
+            .ToArray();
+        int[] groupIds = rows.Select(r => SpecializationResolver.TryParseFirstInt(r.GroupExternalId))
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+
+        Dictionary<int, ExternalSubject> subjectsById = (
+            await externalReferencesRepository.GetSubjectsByIdsAsync(subjectIds, ct)
+        ).ToDictionary(s => (int)s.IdMaterie);
+        Dictionary<int, ExternalFaculty> facultiesById = (
+            await externalReferencesRepository.GetFacultiesByIdsAsync(facultyIds, ct)
+        ).ToDictionary(f => (int)f.IdFacultate);
+        Dictionary<int, ExternalGroup> groupsById = (
+            await externalReferencesRepository.GetGroupsByIdsAsync(groupIds, ct)
+        ).ToDictionary(g => (int)g.IdGrupe);
+
+        var shortNameFacultyPairs = rows
+            .Where(r =>
+                !(r.SpecializationExternalId is > 0)
+                && SpecializationResolver.TryParseFirstInt(r.GroupExternalId) <= 0
+                && r.FacultyExternalId is > 0
+            )
+            .Select(r =>
+                (
+                    Prefix: SpecializationResolver.ExtractAlphaPrefix(r.GroupNames),
+                    FacultyId: r.FacultyExternalId!.Value
+                )
+            )
+            .Where(p => !string.IsNullOrEmpty(p.Prefix))
+            .Distinct()
+            .ToArray();
+        string[] shortNames = shortNameFacultyPairs.Select(p => p.Prefix!).Distinct().ToArray();
+        int[] shortNameFacultyIds = shortNameFacultyPairs
+            .Select(p => p.FacultyId)
+            .Distinct()
+            .ToArray();
+
+        Dictionary<(string ShortName, int FacultyId), int> shortNameToSpecId = (
+            await externalReferencesRepository.GetSpecializationsByShortNameAndFacultiesAsync(
+                shortNames,
+                shortNameFacultyIds,
+                ct
+            )
+        )
+            .GroupBy(l => (
+                ShortName: l.DenumireScurta!.ToUpperInvariant(),
+                FacultyId: (int)l.FacultyId
+            ))
+            .ToDictionary(g => g.Key, g => (int)g.First().IdSpecializare);
+
+        int[] effectiveSpecIds = rows
+            .Select(r =>
+                SpecializationResolver.ResolveEffectiveSpecializationId(
+                    r.SpecializationExternalId,
+                    r.GroupExternalId,
+                    r.FacultyExternalId,
+                    r.GroupNames,
+                    groupsById,
+                    shortNameToSpecId
+                )
+            )
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        Dictionary<int, ExternalSpecialization> specializationsById = (
+            await externalReferencesRepository.GetSpecializationsByIdsAsync(effectiveSpecIds, ct)
+        ).ToDictionary(s => (int)s.IdSpecializare);
+
+        foreach (ActivityStudents row in rows)
+        {
+            int effectiveSpecId = SpecializationResolver.ResolveEffectiveSpecializationId(
+                row.SpecializationExternalId,
+                row.GroupExternalId,
+                row.FacultyExternalId,
+                row.GroupNames,
+                groupsById,
+                shortNameToSpecId
+            );
+            int firstGroupId = SpecializationResolver.TryParseFirstInt(row.GroupExternalId);
+
+            row.FacultyName =
+                row.FacultyExternalId is int facId
+                && facultiesById.TryGetValue(facId, out ExternalFaculty? faculty)
+                    ? faculty.Denumire
+                    : null;
+            row.SpecializationName =
+                effectiveSpecId > 0
+                && specializationsById.TryGetValue(
+                    effectiveSpecId,
+                    out ExternalSpecialization? specialization
+                )
+                    ? specialization.Denumire
+                    : null;
+            row.SubjectName =
+                row.SubjectExternalId is int subjId
+                && subjectsById.TryGetValue(subjId, out ExternalSubject? subject)
+                    ? subject.Denumire
+                    : null;
+            row.ResolvedGroupName =
+                firstGroupId > 0 && groupsById.TryGetValue(firstGroupId, out ExternalGroup? group)
+                    ? group.Nume
+                    : row.GroupNames;
+            row.EffectiveSpecializationExternalId = effectiveSpecId > 0 ? effectiveSpecId : null;
+        }
+
+        await schedulesRepository.SaveChangesAsync(ct);
+        return rows.Count;
+    }
 
     private static TeacherScheduleSlotResponse MapToResponse(TeacherScheduleSlotResult x) =>
         MapToResponse(x, null, null, null, null, null);
