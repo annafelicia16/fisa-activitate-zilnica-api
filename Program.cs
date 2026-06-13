@@ -11,6 +11,8 @@ using FisaActivitateZilnicaApi.Data.Master;
 using FisaActivitateZilnicaApi.Data.University;
 using FisaActivitateZilnicaApi.ExternalReferences.Repositories;
 using FisaActivitateZilnicaApi.ExternalReferences.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.ExternalReferences.Services;
+using FisaActivitateZilnicaApi.ExternalReferences.Services.Interfaces;
 using FisaActivitateZilnicaApi.ExternalTeachers.Repositories;
 using FisaActivitateZilnicaApi.ExternalTeachers.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalTeachers.Services;
@@ -127,11 +129,19 @@ builder.Services.AddAutoMapper(typeof(MappingProfile));
 builder.Services.AddScoped<ISchedulesRepository, SchedulesRepository>();
 builder.Services.AddScoped<IScheduleCatalogRepository, ScheduleCatalogRepository>();
 builder.Services.AddScoped<IDailyActivityRecordsRepository, DailyActivityRecordsRepository>();
+builder.Services.AddScoped<
+    IDailyActivityRecordAttachmentsRepository,
+    DailyActivityRecordAttachmentsRepository
+>();
 builder.Services.AddScoped<IExternalTeachersRepository, ExternalTeachersRepository>();
 builder.Services.AddScoped<IExternalReferencesRepository, ExternalReferencesRepository>();
 builder.Services.AddScoped<
     ISupplementaryActivitiesRepository,
     SupplementaryActivitiesRepository
+>();
+builder.Services.AddScoped<
+    ISupplementaryActivityAttachmentsRepository,
+    SupplementaryActivityAttachmentsRepository
 >();
 
 #endregion
@@ -143,9 +153,17 @@ builder.Services.AddScoped<ISchedulesQueryService, SchedulesQueryService>();
 builder.Services.AddScoped<IScheduleCatalogQueryService, ScheduleCatalogQueryService>();
 builder.Services.AddScoped<IDailyActivityRecordsQueryService, DailyActivityRecordsQueryService>();
 builder.Services.AddScoped<IExternalTeachersQueryService, ExternalTeachersQueryService>();
+builder.Services.AddScoped<IFacultiesQueryService, FacultiesQueryService>();
+builder.Services.AddScoped<ISpecializationsQueryService, SpecializationsQueryService>();
+builder.Services.AddScoped<IStudyYearsQueryService, StudyYearsQueryService>();
+builder.Services.AddScoped<IGroupsQueryService, GroupsQueryService>();
 builder.Services.AddScoped<
     IDailyActivityRecordsCommandService,
     DailyActivityRecordsCommandService
+>();
+builder.Services.AddScoped<
+    IDailyActivityRecordAttachmentsService,
+    DailyActivityRecordAttachmentsService
 >();
 builder.Services.AddScoped<
     ISupplementaryActivitiesQueryService,
@@ -154,6 +172,10 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     ISupplementaryActivitiesCommandService,
     SupplementaryActivitiesCommandService
+>();
+builder.Services.AddScoped<
+    ISupplementaryActivityAttachmentsService,
+    SupplementaryActivityAttachmentsService
 >();
 
 #endregion

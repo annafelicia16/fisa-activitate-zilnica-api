@@ -18,6 +18,11 @@ public class ScheduleCatalogRepository(MasterDbContext db) : IScheduleCatalogRep
 {
     private const string WholeClass = "-";
 
+    // Cached AGSIS names arrive in mixed casing and cedilla/comma-below
+    // diacritics depending on the import source — match them
+    // case/accent-insensitively.
+    private const string NameCollation = "Latin1_General_100_CI_AI";
+
     public async Task<IReadOnlyList<CatalogItemResponse>> GetFacultiesAsync(
         int externalTeacherId,
         CancellationToken ct = default
@@ -201,6 +206,100 @@ public class ScheduleCatalogRepository(MasterDbContext db) : IScheduleCatalogRep
 
         return rooms.Select(name => new CatalogRoomResponse(name)).ToList();
     }
+
+    // Name-keyed variants for the activity-record form cascade: NOT teacher
+    // scoped (the disciplines a group has are schedule-wide facts), matched on
+    // the AGSIS names cached at import. A concrete group also includes
+    // whole-class rows — lectures belong to every group of that year — while
+    // "-" means "all groups" and applies no group constraint at all.
+    public async Task<IReadOnlyList<string>> SearchSubjectNamesAsync(
+        string facultyName,
+        string specializationName,
+        int year,
+        string groupName,
+        string? search,
+        CancellationToken ct = default
+    )
+    {
+        IQueryable<ActivityStudents> query = db.ActivityStudents.AsNoTracking()
+            .Where(s =>
+                EF.Functions.Collate(s.FacultyName, NameCollation) == facultyName
+                && EF.Functions.Collate(s.SpecializationName, NameCollation)
+                    == specializationName
+                && s.StudyYearNumber == year
+                && s.SubjectName != null
+            );
+
+        query = ApplyGroupFilterIncludingWholeClass(query, groupName);
+
+        string term = (search ?? string.Empty).Trim();
+        if (term.Length > 0)
+            query = query.Where(s => s.SubjectName!.Contains(term));
+
+        return await query
+            .Select(s => s.SubjectName!)
+            .Distinct()
+            .OrderBy(name => name)
+            .Take(100)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<string>> SearchRoomNamesAsync(
+        string facultyName,
+        string specializationName,
+        int year,
+        string groupName,
+        string subjectName,
+        string? search,
+        CancellationToken ct = default
+    )
+    {
+        var baseQuery =
+            from slot in db.ActivitySlots.AsNoTracking()
+            join activity in db.Activities.AsNoTracking() on slot.ActivityId equals activity.Id
+            join s in db.ActivityStudents.AsNoTracking() on activity.Id equals s.ActivityId
+            join room in db.Rooms.AsNoTracking() on slot.RoomId equals room.Id
+            where
+                EF.Functions.Collate(s.FacultyName, NameCollation) == facultyName
+                && EF.Functions.Collate(s.SpecializationName, NameCollation)
+                    == specializationName
+                && s.StudyYearNumber == year
+                && EF.Functions.Collate(s.SubjectName, NameCollation) == subjectName
+            select new { RoomName = room.Name, GroupName = s.ResolvedGroupName };
+
+        baseQuery =
+            groupName == WholeClass
+                ? baseQuery
+                : baseQuery.Where(x =>
+                    EF.Functions.Collate(x.GroupName, NameCollation) == groupName
+                    || x.GroupName == null
+                    || x.GroupName == ""
+                    || x.GroupName == "-1"
+                    || x.GroupName == "-"
+                );
+
+        IQueryable<string> names = baseQuery.Select(x => x.RoomName);
+
+        string term = (search ?? string.Empty).Trim();
+        if (term.Length > 0)
+            names = names.Where(name => name.Contains(term));
+
+        return await names.Distinct().OrderBy(name => name).Take(100).ToListAsync(ct);
+    }
+
+    private static IQueryable<ActivityStudents> ApplyGroupFilterIncludingWholeClass(
+        IQueryable<ActivityStudents> query,
+        string groupName
+    ) =>
+        groupName == WholeClass
+            ? query
+            : query.Where(s =>
+                EF.Functions.Collate(s.ResolvedGroupName, NameCollation) == groupName
+                || s.ResolvedGroupName == null
+                || s.ResolvedGroupName == ""
+                || s.ResolvedGroupName == "-1"
+                || s.ResolvedGroupName == "-"
+            );
 
     private static IQueryable<ActivityStudents> ApplyGroupFilter(
         IQueryable<ActivityStudents> query,

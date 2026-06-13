@@ -24,7 +24,13 @@ public class SupplementaryActivitiesRepository(MasterDbContext masterDbContext, 
         if (activity == null)
             return null;
 
-        return _mapper.Map<GetSupplementaryActivityResponse>(activity);
+        GetSupplementaryActivityResponse response = _mapper.Map<GetSupplementaryActivityResponse>(
+            activity
+        );
+        response.AttachmentCount = await _masterDbContext
+            .SupplementaryActivityAttachments.AsNoTracking()
+            .CountAsync(a => a.SupplementaryActivityId == id);
+        return response;
     }
 
     public async Task<IEnumerable<GetSupplementaryActivityResponse>> QuerySupplementaryActivities(
@@ -44,10 +50,28 @@ public class SupplementaryActivitiesRepository(MasterDbContext masterDbContext, 
         if (endDate != null)
             query = query.Where(sa => sa.Date <= endDate);
 
-        return await query
+        List<GetSupplementaryActivityResponse> responses = await query
             .OrderBy(sa => sa.Date)
             .Select(sa => _mapper.Map<GetSupplementaryActivityResponse>(sa))
             .ToListAsync();
+
+        // Attachment counts stitched in with one grouped query (the count lives
+        // on the response, not the model) — drives the list paperclip indicator.
+        if (responses.Count > 0)
+        {
+            string[] ids = responses.Select(r => r.Id).ToArray();
+            Dictionary<string, int> counts = await _masterDbContext
+                .SupplementaryActivityAttachments.AsNoTracking()
+                .Where(a => ids.Contains(a.SupplementaryActivityId))
+                .GroupBy(a => a.SupplementaryActivityId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Key, x => x.Count);
+
+            foreach (GetSupplementaryActivityResponse response in responses)
+                response.AttachmentCount = counts.GetValueOrDefault(response.Id, 0);
+        }
+
+        return responses;
     }
 
     public async Task<GetSupplementaryActivityResponse> CreateSupplementaryActivity(

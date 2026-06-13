@@ -18,6 +18,7 @@ public class MappingProfile : Profile
                 options.Condition((src, dest, srcMember) => srcMember != null)
             );
         CreateMap<DailyActivityRecord, GetDailyActivityRecordResponse>();
+        CreateMap<DailyActivityRecordAttachment, GetDailyActivityRecordAttachmentResponse>();
 
         CreateMap<CreateSupplementaryActivityRequest, SupplementaryActivity>();
         CreateMap<UpdateSupplementaryActivityRequest, SupplementaryActivity>()
@@ -25,5 +26,6 @@ public class MappingProfile : Profile
                 options.Condition((src, dest, srcMember) => srcMember != null)
             );
         CreateMap<SupplementaryActivity, GetSupplementaryActivityResponse>();
+        CreateMap<SupplementaryActivityAttachment, GetSupplementaryActivityAttachmentResponse>();
     }
 }

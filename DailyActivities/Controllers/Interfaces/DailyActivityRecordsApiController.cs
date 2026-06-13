@@ -72,6 +72,51 @@ public abstract class DailyActivityRecordsApiController : ControllerBase
         [FromRoute] string id
     );
 
+    // 2 GB request ceiling (20 files × 100 MB) — overrides Kestrel's ~30 MB default.
+    [HttpPost("{id}/attachments")]
+    [RequestSizeLimit(2_147_483_647)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 2_147_483_647)]
+    [ProducesResponseType(
+        statusCode: 201,
+        type: typeof(IReadOnlyList<GetDailyActivityRecordAttachmentResponse>)
+    )]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    [ProducesResponseType(statusCode: 404, type: typeof(string))]
+    public abstract Task<
+        ActionResult<IReadOnlyList<GetDailyActivityRecordAttachmentResponse>>
+    > UploadDailyActivityRecordAttachments(
+        [FromRoute] string id,
+        [FromForm] UploadDailyActivityRecordAttachmentsRequest request,
+        CancellationToken ct = default
+    );
+
+    [HttpGet("{id}/attachments")]
+    [ProducesResponseType(
+        statusCode: 200,
+        type: typeof(IReadOnlyList<GetDailyActivityRecordAttachmentResponse>)
+    )]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    [ProducesResponseType(statusCode: 404, type: typeof(string))]
+    public abstract Task<
+        ActionResult<IReadOnlyList<GetDailyActivityRecordAttachmentResponse>>
+    > GetDailyActivityRecordAttachments([FromRoute] string id);
+
+    [HttpGet("attachments/{attachmentId}/download")]
+    [ProducesResponseType(statusCode: 200)]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    [ProducesResponseType(statusCode: 404, type: typeof(string))]
+    public abstract Task<IActionResult> DownloadDailyActivityRecordAttachment(
+        [FromRoute] string attachmentId
+    );
+
+    [HttpDelete("attachments/{attachmentId}")]
+    [ProducesResponseType(statusCode: 204)]
+    [ProducesResponseType(statusCode: 400, type: typeof(string))]
+    [ProducesResponseType(statusCode: 404, type: typeof(string))]
+    public abstract Task<IActionResult> DeleteDailyActivityRecordAttachment(
+        [FromRoute] string attachmentId
+    );
+
     [HttpGet("monthly-summary")]
     [ProducesResponseType(
         statusCode: 200,

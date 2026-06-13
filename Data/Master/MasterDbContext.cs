@@ -26,7 +26,11 @@ public class MasterDbContext(DbContextOptions<MasterDbContext> options) : DbCont
     public DbSet<Subgroup> Subgroups => Set<Subgroup>();
     public DbSet<ActivitySlot> ActivitySlots => Set<ActivitySlot>();
     public DbSet<DailyActivityRecord> DailyActivityRecords => Set<DailyActivityRecord>();
+    public DbSet<DailyActivityRecordAttachment> DailyActivityRecordAttachments =>
+        Set<DailyActivityRecordAttachment>();
     public DbSet<SupplementaryActivity> SupplementaryActivities => Set<SupplementaryActivity>();
+    public DbSet<SupplementaryActivityAttachment> SupplementaryActivityAttachments =>
+        Set<SupplementaryActivityAttachment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

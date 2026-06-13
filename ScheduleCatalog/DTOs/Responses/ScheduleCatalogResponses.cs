@@ -11,3 +11,5 @@ public sealed record CatalogYearResponse(int Year);
 public sealed record CatalogGroupResponse(string GroupKey, string Name);
 
 public sealed record CatalogRoomResponse(string Name);
+
+public sealed record CatalogSubjectResponse(string Name);

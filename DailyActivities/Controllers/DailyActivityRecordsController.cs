@@ -9,13 +9,16 @@ namespace FisaActivitateZilnicaApi.DailyActivities.Controllers;
 
 public class DailyActivityRecordsController(
     IDailyActivityRecordsCommandService dailyActivityRecordsCommandService,
-    IDailyActivityRecordsQueryService dailyActivityRecordsQueryService
+    IDailyActivityRecordsQueryService dailyActivityRecordsQueryService,
+    IDailyActivityRecordAttachmentsService dailyActivityRecordAttachmentsService
 ) : DailyActivityRecordsApiController
 {
     private readonly IDailyActivityRecordsCommandService _dailyActivityRecordsCommandService =
         dailyActivityRecordsCommandService;
     private readonly IDailyActivityRecordsQueryService _dailyActivityRecordsQueryService =
         dailyActivityRecordsQueryService;
+    private readonly IDailyActivityRecordAttachmentsService _dailyActivityRecordAttachmentsService =
+        dailyActivityRecordAttachmentsService;
 
     public override async Task<
         ActionResult<GetDailyActivityRecordResponse>
@@ -148,6 +151,98 @@ public class DailyActivityRecordsController(
         try
         {
             await _dailyActivityRecordsCommandService.DeleteDailyActivityRecordAsync(id);
+            return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<
+        ActionResult<IReadOnlyList<GetDailyActivityRecordAttachmentResponse>>
+    > UploadDailyActivityRecordAttachments(
+        string id,
+        UploadDailyActivityRecordAttachmentsRequest request,
+        CancellationToken ct = default
+    )
+    {
+        try
+        {
+            IReadOnlyList<GetDailyActivityRecordAttachmentResponse> attachments =
+                await _dailyActivityRecordAttachmentsService.UploadAttachmentsAsync(
+                    id,
+                    request.Files,
+                    ct
+                );
+
+            return Created($"api/dailyActivityRecords/{id}/attachments", attachments);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<
+        ActionResult<IReadOnlyList<GetDailyActivityRecordAttachmentResponse>>
+    > GetDailyActivityRecordAttachments(string id)
+    {
+        try
+        {
+            IReadOnlyList<GetDailyActivityRecordAttachmentResponse> attachments =
+                await _dailyActivityRecordAttachmentsService.GetAttachmentsForRecordAsync(id);
+
+            return Ok(attachments);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<IActionResult> DownloadDailyActivityRecordAttachment(
+        string attachmentId
+    )
+    {
+        try
+        {
+            (Stream stream, string contentType, string fileName) =
+                await _dailyActivityRecordAttachmentsService.OpenAttachmentForDownloadAsync(
+                    attachmentId
+                );
+
+            return File(stream, contentType, fileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<IActionResult> DeleteDailyActivityRecordAttachment(
+        string attachmentId
+    )
+    {
+        try
+        {
+            await _dailyActivityRecordAttachmentsService.DeleteAttachmentAsync(attachmentId);
             return NoContent();
         }
         catch (ArgumentException ex)

@@ -8,9 +8,102 @@ namespace FisaActivitateZilnicaApi.SupplementaryActivities.Controllers;
 
 public class SupplementaryActivitiesController(
     ISupplementaryActivitiesCommandService supplementaryActivitiesCommandService,
-    ISupplementaryActivitiesQueryService supplementaryActivitiesQueryService
+    ISupplementaryActivitiesQueryService supplementaryActivitiesQueryService,
+    ISupplementaryActivityAttachmentsService supplementaryActivityAttachmentsService
 ) : SupplementaryActivitiesApiController
 {
+    public override async Task<
+        ActionResult<IReadOnlyList<GetSupplementaryActivityAttachmentResponse>>
+    > UploadSupplementaryActivityAttachments(
+        string id,
+        UploadSupplementaryActivityAttachmentsRequest request,
+        CancellationToken ct = default
+    )
+    {
+        try
+        {
+            IReadOnlyList<GetSupplementaryActivityAttachmentResponse> attachments =
+                await supplementaryActivityAttachmentsService.UploadAttachmentsAsync(
+                    id,
+                    request.Files,
+                    ct
+                );
+
+            return Created($"api/supplementaryActivities/{id}/attachments", attachments);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<
+        ActionResult<IReadOnlyList<GetSupplementaryActivityAttachmentResponse>>
+    > GetSupplementaryActivityAttachments(string id)
+    {
+        try
+        {
+            IReadOnlyList<GetSupplementaryActivityAttachmentResponse> attachments =
+                await supplementaryActivityAttachmentsService.GetAttachmentsForActivityAsync(id);
+
+            return Ok(attachments);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<IActionResult> DownloadSupplementaryActivityAttachment(
+        string attachmentId
+    )
+    {
+        try
+        {
+            (Stream stream, string contentType, string fileName) =
+                await supplementaryActivityAttachmentsService.OpenAttachmentForDownloadAsync(
+                    attachmentId
+                );
+
+            return File(stream, contentType, fileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<IActionResult> DeleteSupplementaryActivityAttachment(
+        string attachmentId
+    )
+    {
+        try
+        {
+            await supplementaryActivityAttachmentsService.DeleteAttachmentAsync(attachmentId);
+            return NoContent();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
     public override async Task<
         ActionResult<GetSupplementaryActivityResponse>
     > GetSupplementaryActivityById(string id)

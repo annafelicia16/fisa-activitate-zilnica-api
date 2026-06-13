@@ -24,7 +24,13 @@ public class DailyActivityRecordsRepository(MasterDbContext masterDbContext, IMa
         if (dailyActivityRecord == null)
             return null;
 
-        return _mapper.Map<GetDailyActivityRecordResponse>(dailyActivityRecord);
+        GetDailyActivityRecordResponse response = _mapper.Map<GetDailyActivityRecordResponse>(
+            dailyActivityRecord
+        );
+        response.AttachmentCount = await _masterDbContext
+            .DailyActivityRecordAttachments.AsNoTracking()
+            .CountAsync(a => a.DailyActivityRecordId == id);
+        return response;
     }
 
     public async Task<IEnumerable<GetDailyActivityRecordResponse>> QueryDailyActivityRecords(
@@ -74,9 +80,27 @@ public class DailyActivityRecordsRepository(MasterDbContext masterDbContext, IMa
         if (endDate != null)
             query = query.Where(dar => dar.EndDate <= endDate);
 
-        return await query
+        List<GetDailyActivityRecordResponse> responses = await query
             .Select(dar => _mapper.Map<GetDailyActivityRecordResponse>(dar))
             .ToListAsync();
+
+        // Attachment counts stitched in with one grouped query (the count lives
+        // on the response, not the model) — drives the list paperclip indicator.
+        if (responses.Count > 0)
+        {
+            string[] ids = responses.Select(r => r.Id).ToArray();
+            Dictionary<string, int> counts = await _masterDbContext
+                .DailyActivityRecordAttachments.AsNoTracking()
+                .Where(a => ids.Contains(a.DailyActivityRecordId))
+                .GroupBy(a => a.DailyActivityRecordId)
+                .Select(g => new { g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Key, x => x.Count);
+
+            foreach (GetDailyActivityRecordResponse response in responses)
+                response.AttachmentCount = counts.GetValueOrDefault(response.Id, 0);
+        }
+
+        return responses;
     }
 
     public async Task<IEnumerable<MonthlyActivitySummaryResponse>> GetMonthlySummaries(

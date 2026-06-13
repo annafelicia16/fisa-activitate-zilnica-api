@@ -6,11 +6,14 @@ using FisaActivitateZilnicaApi.SupplementaryActivities.Services.Interfaces;
 namespace FisaActivitateZilnicaApi.SupplementaryActivities.Services;
 
 public class SupplementaryActivitiesCommandService(
-    ISupplementaryActivitiesRepository supplementaryActivitiesRepository
+    ISupplementaryActivitiesRepository supplementaryActivitiesRepository,
+    ISupplementaryActivityAttachmentsService supplementaryActivityAttachmentsService
 ) : ISupplementaryActivitiesCommandService
 {
     private readonly ISupplementaryActivitiesRepository _supplementaryActivitiesRepository =
         supplementaryActivitiesRepository;
+    private readonly ISupplementaryActivityAttachmentsService _supplementaryActivityAttachmentsService =
+        supplementaryActivityAttachmentsService;
 
     public async Task<GetSupplementaryActivityResponse> CreateSupplementaryActivityAsync(
         CreateSupplementaryActivityRequest request
@@ -35,7 +38,15 @@ public class SupplementaryActivitiesCommandService(
             throw new ArgumentException("Route parameter 'id' is required.");
 
         await EnsureExistsAsync(id);
-        return await _supplementaryActivitiesRepository.DeleteSupplementaryActivity(id);
+
+        // Attachment rows die with the activity via the FK cascade; the disk
+        // files need explicit cleanup, after the DB delete succeeds.
+        GetSupplementaryActivityResponse deleted =
+            await _supplementaryActivitiesRepository.DeleteSupplementaryActivity(id);
+        await _supplementaryActivityAttachmentsService.DeleteAllAttachmentFilesForActivityAsync(
+            id
+        );
+        return deleted;
     }
 
     private async Task EnsureExistsAsync(string id)

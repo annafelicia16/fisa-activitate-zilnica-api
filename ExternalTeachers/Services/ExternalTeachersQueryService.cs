@@ -6,6 +6,7 @@ using FisaActivitateZilnicaApi.ExternalTeachers.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalTeachers.Services.Interfaces;
 using FisaActivitateZilnicaApi.Schedules.Models;
 using FisaActivitateZilnicaApi.Schedules.Repositories.Interfaces;
+using FisaActivitateZilnicaApi.System;
 
 namespace FisaActivitateZilnicaApi.ExternalTeachers.Services;
 
@@ -98,19 +99,10 @@ public class ExternalTeachersQueryService(
             departmentResponse,
             faculties,
             faculties.FirstOrDefault(),
-            CurrentAcademicYear(now),
+            AcademicCalendar.CurrentYearLabel(now),
             activeSemester?.Number,
             activeSemester?.StartDate,
             activeSemester?.EndDate
         );
-    }
-
-    // Romanian academic year is calendar-driven: the cycle "Y-(Y+1)" starts in August
-    // and runs through July of the next year. Past Aug 1 → "thisYear-nextYear",
-    // otherwise (Jan–Jul) → "prevYear-thisYear".
-    private static string CurrentAcademicYear(DateTime today)
-    {
-        int year = today.Year;
-        return today.Month >= 8 ? $"{year}-{year + 1}" : $"{year - 1}-{year}";
     }
 }

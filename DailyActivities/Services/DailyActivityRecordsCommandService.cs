@@ -12,7 +12,8 @@ namespace FisaActivitateZilnicaApi.DailyActivities.Services;
 
 public class DailyActivityRecordsCommandService(
     IDailyActivityRecordsRepository dailyActivityRecordsRepository,
-    ISchedulesQueryService schedulesQueryService
+    ISchedulesQueryService schedulesQueryService,
+    IDailyActivityRecordAttachmentsService dailyActivityRecordAttachmentsService
 ) : IDailyActivityRecordsCommandService
 {
     private const int MaxAutoFillRangeDays = 366;
@@ -25,6 +26,8 @@ public class DailyActivityRecordsCommandService(
     private readonly IDailyActivityRecordsRepository _dailyActivityRecordsRepository =
         dailyActivityRecordsRepository;
     private readonly ISchedulesQueryService _schedulesQueryService = schedulesQueryService;
+    private readonly IDailyActivityRecordAttachmentsService _dailyActivityRecordAttachmentsService =
+        dailyActivityRecordAttachmentsService;
 
     public async Task<GetDailyActivityRecordResponse> CreateDailyActivityRecordAsync(
         CreateDailyActivityRecordRequest request
@@ -111,7 +114,12 @@ public class DailyActivityRecordsCommandService(
 
         await EnsureRecordExistsAsync(id);
 
-        return await _dailyActivityRecordsRepository.DeleteDailyActivityRecord(id);
+        // Attachment rows die with the record via the FK cascade; the disk
+        // files need explicit cleanup, after the DB delete succeeds.
+        GetDailyActivityRecordResponse deleted =
+            await _dailyActivityRecordsRepository.DeleteDailyActivityRecord(id);
+        await _dailyActivityRecordAttachmentsService.DeleteAllAttachmentFilesForRecordAsync(id);
+        return deleted;
     }
 
     private async Task EnsureRecordExistsAsync(string id)
@@ -212,14 +220,14 @@ public class DailyActivityRecordsCommandService(
     {
         string value = (raw ?? string.Empty).Trim().ToLowerInvariant();
         if (value.StartsWith("curs") || value.StartsWith("course") || value.StartsWith("lect"))
-            return ("Curs", 2.5);
+            return ("Curs", 2.0);
         if (value.StartsWith("seminar"))
-            return ("Seminar", 1.5);
+            return ("Seminar", 1.0);
         if (value.StartsWith("lab") || value.StartsWith("lucrare"))
             return ("Laborator", 1.0);
         if (value.StartsWith("proiect") || value.StartsWith("project"))
             return ("Proiect", 1.0);
-        return ("Curs", 2.5);
+        return ("Curs", 2.0);
     }
 
     // Parses the slot's start time from its many shapes ("08:00-09:50", "8-10",

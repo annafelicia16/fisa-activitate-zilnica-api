@@ -106,6 +106,74 @@ public class ScheduleCatalogQueryService(IScheduleCatalogRepository repository)
         );
     }
 
+    public async Task<IReadOnlyList<CatalogSubjectResponse>> SearchSubjectsAsync(
+        string? faculty,
+        string? specialization,
+        int? year,
+        string? group,
+        string? search,
+        CancellationToken ct = default
+    )
+    {
+        string facultyName = (faculty ?? string.Empty).Trim();
+        string specializationName = (specialization ?? string.Empty).Trim();
+        string groupName = (group ?? string.Empty).Trim();
+        if (
+            facultyName.Length == 0
+            || specializationName.Length == 0
+            || groupName.Length == 0
+            || year is not > 0
+        )
+            return [];
+
+        var names = await repository.SearchSubjectNamesAsync(
+            facultyName,
+            specializationName,
+            year.Value,
+            groupName,
+            search,
+            ct
+        );
+
+        return names.Select(name => new CatalogSubjectResponse(name)).ToList();
+    }
+
+    public async Task<IReadOnlyList<CatalogRoomResponse>> SearchRoomsAsync(
+        string? faculty,
+        string? specialization,
+        int? year,
+        string? group,
+        string? subject,
+        string? search,
+        CancellationToken ct = default
+    )
+    {
+        string facultyName = (faculty ?? string.Empty).Trim();
+        string specializationName = (specialization ?? string.Empty).Trim();
+        string groupName = (group ?? string.Empty).Trim();
+        string subjectName = (subject ?? string.Empty).Trim();
+        if (
+            facultyName.Length == 0
+            || specializationName.Length == 0
+            || groupName.Length == 0
+            || subjectName.Length == 0
+            || year is not > 0
+        )
+            return [];
+
+        var names = await repository.SearchRoomNamesAsync(
+            facultyName,
+            specializationName,
+            year.Value,
+            groupName,
+            subjectName,
+            search,
+            ct
+        );
+
+        return names.Select(name => new CatalogRoomResponse(name)).ToList();
+    }
+
     private static void RequireTeacher(int externalTeacherId)
     {
         if (externalTeacherId <= 0)

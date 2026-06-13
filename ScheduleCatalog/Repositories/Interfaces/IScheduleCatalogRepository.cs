@@ -43,4 +43,21 @@ public interface IScheduleCatalogRepository
         int subjectId,
         CancellationToken ct = default
     );
+    Task<IReadOnlyList<string>> SearchSubjectNamesAsync(
+        string facultyName,
+        string specializationName,
+        int year,
+        string groupName,
+        string? search,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<string>> SearchRoomNamesAsync(
+        string facultyName,
+        string specializationName,
+        int year,
+        string groupName,
+        string subjectName,
+        string? search,
+        CancellationToken ct = default
+    );
 }

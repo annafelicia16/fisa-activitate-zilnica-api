@@ -21,4 +21,8 @@ public class GetDailyActivityRecordResponse
     public required DateTime StartDate { get; set; }
     public required DateTime EndDate { get; set; }
     public int? ActivitySlotId { get; set; }
+
+    // Stitched in by the repository (not a model column) — drives the paperclip
+    // indicator in the client's records list.
+    public int AttachmentCount { get; set; }
 }

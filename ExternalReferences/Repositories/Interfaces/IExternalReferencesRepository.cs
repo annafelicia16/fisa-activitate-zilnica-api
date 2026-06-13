@@ -12,6 +12,31 @@ public interface IExternalReferencesRepository
         IReadOnlyCollection<int> ids,
         CancellationToken ct = default
     );
+    Task<IReadOnlyList<ExternalFaculty>> SearchFacultiesAsync(
+        string? search,
+        string academicYearLabel,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<ExternalSpecialization>> SearchSpecializationsByFacultyAsync(
+        string facultyName,
+        string academicYearLabel,
+        string? search,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<ExternalStudyYear>> GetStudyYearsByFacultyAndSpecializationAsync(
+        string facultyName,
+        string specializationName,
+        string academicYearLabel,
+        CancellationToken ct = default
+    );
+    Task<IReadOnlyList<string>> SearchGroupNamesAsync(
+        string facultyName,
+        string specializationName,
+        int year,
+        string academicYearLabel,
+        string? search,
+        CancellationToken ct = default
+    );
     Task<IReadOnlyList<ExternalSpecialization>> GetSpecializationsByIdsAsync(
         IReadOnlyCollection<int> ids,
         CancellationToken ct = default
