@@ -11,6 +11,8 @@ public class UniversityDbContext(DbContextOptions<UniversityDbContext> options) 
     public DbSet<ExternalFaculty> ExternalFaculties => Set<ExternalFaculty>();
     public DbSet<ExternalSpecialization> ExternalSpecializations =>
         Set<ExternalSpecialization>();
+    public DbSet<ExternalProgramOfStudy> ExternalProgramsOfStudy =>
+        Set<ExternalProgramOfStudy>();
     public DbSet<ExternalGroup> ExternalGroups => Set<ExternalGroup>();
     public DbSet<ExternalAcademicYear> ExternalAcademicYears => Set<ExternalAcademicYear>();
     public DbSet<ExternalStudyYear> ExternalStudyYears => Set<ExternalStudyYear>();
@@ -24,6 +26,11 @@ public class UniversityDbContext(DbContextOptions<UniversityDbContext> options) 
         modelBuilder.Entity<ExternalSubject>().ToTable("Materie", "dbo");
         modelBuilder.Entity<ExternalFaculty>().ToTable("Facultate", "dbo");
         modelBuilder.Entity<ExternalSpecialization>().ToTable("Specializare", "dbo");
+        // Keyless: N_PROGRAM_DE_STUDIU is versioned, so ID is not unique.
+        modelBuilder
+            .Entity<ExternalProgramOfStudy>()
+            .HasNoKey()
+            .ToTable("N_PROGRAM_DE_STUDIU", "dbo");
         modelBuilder.Entity<ExternalGroup>().ToTable("Grupe", "dbo");
         modelBuilder.Entity<ExternalAcademicYear>().ToTable("AnUniversitar", "dbo");
         modelBuilder.Entity<ExternalStudyYear>().ToTable("AnStudiu", "dbo");

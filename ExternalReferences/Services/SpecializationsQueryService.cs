@@ -1,4 +1,5 @@
 using FisaActivitateZilnicaApi.ExternalReferences.DTOs.Responses;
+using FisaActivitateZilnicaApi.ExternalReferences.Models;
 using FisaActivitateZilnicaApi.ExternalReferences.Repositories.Interfaces;
 using FisaActivitateZilnicaApi.ExternalReferences.Services.Interfaces;
 using FisaActivitateZilnicaApi.System;
@@ -31,10 +32,26 @@ public class SpecializationsQueryService(
 
         // AGSIS keeps duplicate rows for the same program name (distinct IDs,
         // e.g. two "ERASMUS" entries) — collapse them by name for the dropdown.
-        return specializations
+        var distinct = specializations
             .GroupBy(s => s.Denumire)
             .Select(g => g.First())
-            .Select(s => new SpecializationResponse(s.IdSpecializare, s.Denumire, s.DenumireScurta))
+            .ToList();
+
+        IReadOnlyDictionary<int, StudyCycle> cyclesBySpecId =
+            await _externalReferencesRepository.GetSpecializationCyclesByIdsAsync(
+                distinct.Select(s => (int)s.IdSpecializare).ToArray(),
+                ct
+            );
+
+        return distinct
+            .Select(s => new SpecializationResponse(
+                s.IdSpecializare,
+                s.Denumire,
+                s.DenumireScurta,
+                cyclesBySpecId.TryGetValue((int)s.IdSpecializare, out StudyCycle cycle)
+                    ? StudyCycleResolver.ToLabel(cycle)
+                    : null
+            ))
             .ToList();
     }
 }

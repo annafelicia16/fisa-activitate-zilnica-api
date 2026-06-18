@@ -223,6 +223,69 @@ public class ExternalReferencesRepository(UniversityDbContext db) : IExternalRef
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyDictionary<int, StudyCycle>> GetSpecializationCyclesByIdsAsync(
+        IReadOnlyCollection<int> ids,
+        CancellationToken ct = default
+    )
+    {
+        if (ids.Count == 0)
+            return new Dictionary<int, StudyCycle>();
+
+        var longIds = ids.Select(i => (long)i).ToArray();
+
+        // The two AGSIS columns that carry the cycle: the national study-program link
+        // (id_n_programdestudiu → N_PROGRAM_DE_STUDIU) and, as a fallback, the awarded
+        // diploma type. ID_TipCiclu is unpopulated in AGSIS, so it is ignored.
+        var specs = await db
+            .ExternalSpecializations.AsNoTracking()
+            .Where(s => longIds.Contains(s.IdSpecializare))
+            .Select(s => new
+            {
+                s.IdSpecializare,
+                s.IdProgramDeStudiu,
+                s.IdTipDiplomaUniversitar,
+            })
+            .ToListAsync(ct);
+
+        int[] programIds = specs
+            .Where(s => s.IdProgramDeStudiu is > 0)
+            .Select(s => (int)s.IdProgramDeStudiu!.Value)
+            .Distinct()
+            .ToArray();
+
+        // N_PROGRAM_DE_STUDIU is versioned (many rows per program id), but each program
+        // id maps to a single cycle — MAX collapses the per-year versions.
+        Dictionary<int, int?> cycleByProgramId =
+            programIds.Length == 0
+                ? new Dictionary<int, int?>()
+                : (
+                    await db
+                        .ExternalProgramsOfStudy.AsNoTracking()
+                        .Where(p => programIds.Contains(p.Id))
+                        .GroupBy(p => p.Id)
+                        .Select(g => new { Id = g.Key, Cycle = g.Max(p => p.IdCicluStudii) })
+                        .ToListAsync(ct)
+                ).ToDictionary(x => x.Id, x => x.Cycle);
+
+        var result = new Dictionary<int, StudyCycle>(specs.Count);
+        foreach (var s in specs)
+        {
+            int? programCycle =
+                s.IdProgramDeStudiu is long pid
+                && pid > 0
+                && cycleByProgramId.TryGetValue((int)pid, out int? c)
+                    ? c
+                    : null;
+
+            result[(int)s.IdSpecializare] = StudyCycleResolver.Resolve(
+                programCycle,
+                s.IdTipDiplomaUniversitar
+            );
+        }
+
+        return result;
+    }
+
     public async Task<ExternalDepartment?> GetActiveDepartmentForTeacherAsync(
         long externalTeacherId,
         DateTime today,

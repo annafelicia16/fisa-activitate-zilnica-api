@@ -56,4 +56,11 @@ public interface IExternalReferencesRepository
         DateTime today,
         CancellationToken ct = default
     );
+
+    // Resolves the study cycle (bachelor/master/doctorate) for each specialization id.
+    // Ids that cannot be classified map to StudyCycle.Unknown. See StudyCycleResolver.
+    Task<IReadOnlyDictionary<int, StudyCycle>> GetSpecializationCyclesByIdsAsync(
+        IReadOnlyCollection<int> ids,
+        CancellationToken ct = default
+    );
 }

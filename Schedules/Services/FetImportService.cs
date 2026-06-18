@@ -431,6 +431,14 @@ public class FetImportService(
             )
         ).ToDictionary(s => (int)s.IdSpecializare);
 
+        // Study cycle (bachelor/master/doctorate) of each effective specialization,
+        // resolved from AGSIS and cached onto the rows below.
+        IReadOnlyDictionary<int, StudyCycle> cyclesBySpecId =
+            await externalReferencesRepository.GetSpecializationCyclesByIdsAsync(
+                effectiveSpecExternalIds,
+                ct
+            );
+
         Dictionary<int, Activity> fetIdToActivity = [];
         foreach (var activityData in data.Activities)
         {
@@ -587,6 +595,7 @@ public class FetImportService(
                                     : commentRef.GroupNames,
                             EffectiveSpecializationExternalId =
                                 effectiveSpecId > 0 ? effectiveSpecId : null,
+                            SpecializationCycle = ResolveCycle(effectiveSpecId, cyclesBySpecId),
                             Activity = activity,
                         },
                         ct
@@ -663,6 +672,18 @@ public class FetImportService(
 
     private static FetImportResult Failure(string message) =>
         new(false, null, null, null, null, message);
+
+    // Stores the resolved cycle, or null when there is no specialization or it could
+    // not be classified — keeps "unknown" out of the column rather than persisting 0.
+    private static StudyCycle? ResolveCycle(
+        int effectiveSpecId,
+        IReadOnlyDictionary<int, StudyCycle> cyclesBySpecId
+    ) =>
+        effectiveSpecId > 0
+        && cyclesBySpecId.TryGetValue(effectiveSpecId, out StudyCycle cycle)
+        && cycle != StudyCycle.Unknown
+            ? cycle
+            : null;
 
     private static IReadOnlyList<string> SplitByPlus(string value)
     {

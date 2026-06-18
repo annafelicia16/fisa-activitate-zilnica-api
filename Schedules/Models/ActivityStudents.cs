@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using FisaActivitateZilnicaApi.ExternalReferences.Models;
 
 namespace FisaActivitateZilnicaApi.Schedules.Models;
 
@@ -68,6 +69,11 @@ public class ActivityStudents
 
     [Column("EffectiveSpecializationExternalId")]
     public int? EffectiveSpecializationExternalId { get; set; }
+
+    // Study cycle of EffectiveSpecializationExternalId, resolved from AGSIS at import /
+    // backfill. Null when it could not be determined. See StudyCycleResolver.
+    [Column("SpecializationCycle")]
+    public StudyCycle? SpecializationCycle { get; set; }
 
     public virtual required Activity Activity { get; set; }
 }

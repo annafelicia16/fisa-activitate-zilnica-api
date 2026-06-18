@@ -353,6 +353,8 @@ public class SchedulesQueryService(
         Dictionary<int, ExternalSpecialization> specializationsById = (
             await externalReferencesRepository.GetSpecializationsByIdsAsync(effectiveSpecIds, ct)
         ).ToDictionary(s => (int)s.IdSpecializare);
+        IReadOnlyDictionary<int, StudyCycle> cyclesBySpecId =
+            await externalReferencesRepository.GetSpecializationCyclesByIdsAsync(effectiveSpecIds, ct);
 
         foreach (ActivityStudents row in rows)
         {
@@ -389,6 +391,12 @@ public class SchedulesQueryService(
                     ? group.Nume
                     : row.GroupNames;
             row.EffectiveSpecializationExternalId = effectiveSpecId > 0 ? effectiveSpecId : null;
+            row.SpecializationCycle =
+                effectiveSpecId > 0
+                && cyclesBySpecId.TryGetValue(effectiveSpecId, out StudyCycle cycle)
+                && cycle != StudyCycle.Unknown
+                    ? cycle
+                    : null;
         }
 
         await schedulesRepository.SaveChangesAsync(ct);
